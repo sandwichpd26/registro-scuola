@@ -13,8 +13,8 @@ import { useState, useMemo, useEffect, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 // ── ⚙️  CONFIGURA QUI ──────────────────────────────────────────────
-const SUPABASE_URL  = "https://kckgcwaeqoshyyjlyiur.supabase.co"; // ← sostituisci
-const SUPABASE_ANON = "sb_publishable_Zd42jpN71DbeYrE2ERkxow_Qa_P6RoS";                                // ← sostituisci
+const SUPABASE_URL  = "process.env.REACT_APP_SUPABASE_URL"; // ← sostituisci
+const SUPABASE_ANON = "process.env.REACT_APP_SUPABASE_ANON_KEY";                                // ← sostituisci
 // ──────────────────────────────────────────────────────────────────
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON);
