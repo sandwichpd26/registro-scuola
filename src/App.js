@@ -311,8 +311,8 @@ export default function App() {
         archivedCount={isAdmin?archivedStudents.length:0} trashedCount={isAdmin?trashedStudents.length:0} alertCount={alertCount} onProfile={()=>setProfileModal(true)}
       />
       <main style={S.main}><div className="page-anim" key={safePage}>{pages[safePage]||pages.home}</div></main>
+      {profileModal&&<ProfileModal user={currentUser} onSave={async(pw)=>{try{await db.upsertTeacher({id:currentUser.id,password:pw});showToast("Password aggiornata");}catch(e){showToast("Errore","err");}setProfileModal(false);}} onClose={()=>setProfileModal(false)}/>}
     </div>
-    {profileModal&&<ProfileModal user={currentUser} onSave={async(pw)=>{try{await db.upsertTeacher({id:currentUser.id,password:pw});showToast("Password aggiornata");}catch(e){showToast("Errore","err");}setProfileModal(false);}} onClose={()=>setProfileModal(false)}/>}
   );
 }
 
