@@ -25,7 +25,7 @@ const today    = () => new Date().toISOString().split("T")[0];
 const fmtDate  = d => { if(!d)return""; const [y,m,dd]=d.split("-"); return `${dd}/${m}/${y}`; };
 const LEVELS   = Array.from({length:50},(_,i)=>i+1);
 const DURATIONS= [30,45,60,90,120];
-const T_COLORS = ["#6366f1","#8b5cf6","#a855f7","#ec4899","#ef4444","#f97316","#f59e0b","#eab308","#84cc16","#22c55e","#10b981","#14b8a6","#06b6d4","#0ea5e9","#3b82f6","#6366f1","#64748b","#78716c","#d946ef","#e11d48","#0891b2","#059669","#65a30d","#ca8a04","#dc2626","#7c3aed","#0284c7","#15803d","#b45309","#475569"];
+const T_COLORS = ["#6366f1","#10b981","#f59e0b","#ef4444","#8b5cf6","#06b6d4","#ec4899"];
 
 const THEMES = {
   indigo: {
@@ -1008,6 +1008,19 @@ function RestoreModal({student,teachers,onRestore,onClose}) {
   </Overlay>);
 }
 
+function ColorPicker({color,onChange}) {
+  const [open,setOpen]=useState(false);
+  return (<div style={{position:"relative",display:"inline-block"}}>
+    <button onClick={()=>setOpen(o=>!o)} title="Cambia colore" style={{width:24,height:24,borderRadius:"50%",background:color,border:"2px solid #e2e8f0",cursor:"pointer",display:"block"}}/>
+    {open&&(<>
+      <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:999}}/>
+      <div style={{position:"absolute",top:30,left:0,zIndex:1000,background:"white",borderRadius:12,padding:10,boxShadow:"0 8px 30px rgba(0,0,0,0.15)",display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:6,width:180}}>
+        {T_COLORS.map(c=>(<button key={c} onClick={()=>{onChange(c);setOpen(false);}} style={{width:22,height:22,borderRadius:"50%",background:c,border:color===c?"3px solid #0f172a":"2px solid transparent",cursor:"pointer"}}/>))}
+      </div>
+    </>)}
+  </div>);
+}
+
 // ── AMMINISTRAZIONE — identica all'originale ──────────────────────
 function AdminPage({teachers,students,lessons,classLessons,onAddTeacher,onDeleteTeacher,onUpdateTeacher,onReassignStudent,onArchiveTeacher}) {
   const [tm,setTM]=useState(false);const [confirm,setConfirm]=useState(null);const [confirmArchive,setConfirmArchive]=useState(null);const [rm,setRM]=useState(null);const [editT,setEditT]=useState(null);
@@ -1021,7 +1034,7 @@ function AdminPage({teachers,students,lessons,classLessons,onAddTeacher,onDelete
           return(<tr key={t.id} style={S.tr}>
             <td style={S.td}><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{width:10,height:10,borderRadius:"50%",background:t.color,display:"inline-block"}}/><strong>{t.name}</strong></div></td>
             <td style={S.td}>{t.email}</td><td style={S.td}>{t.phone||"—"}</td>
-            <td style={S.td}><div style={{display:"flex",gap:4,flexWrap:"wrap",maxWidth:200}}>{T_COLORS.map(c=><button key={c} onClick={()=>onUpdateTeacher({...t,color:c})} style={{width:20,height:20,borderRadius:"50%",background:c,border:t.color===c?"3px solid #0f172a":"2px solid transparent",cursor:"pointer",flexShrink:0}}/> )}</div></td>
+            <td style={S.td}><ColorPicker color={t.color} onChange={c=>onUpdateTeacher({...t,color:c})}/></td>
             <td style={S.td}>{students.filter(s=>s.teacher_id===t.id&&s.active).length}</td>
             <td style={S.td}>{lCount}</td>
             <td style={S.td}><div style={{display:"flex",gap:4}}><button style={S.iconBtn} onClick={()=>setEditT(t)}>✏️</button><button style={{...S.iconBtn,color:"#8b5cf6",fontSize:13}} onClick={()=>setConfirmArchive(t.id)} title="Archivia">🗄️</button><button style={{...S.iconBtn,color:"#ef4444"}} onClick={()=>setConfirm(t.id)} title="Cestino">🗑️</button></div></td>
