@@ -918,7 +918,6 @@ function ArchivePage({students,teachers,archivedTeachers,lessons,onRestore,onTra
 
 function TrashPage({students,trashedTeachers,onRestore,onDeleteForever,onRestoreTeacher,onDeleteTeacherForever}) {
   const [confirmDel,setConfirmDel]=useState(null);const [confirmDelT,setConfirmDelT]=useState(null);const [tab,setTab]=useState("students");
-  const isEmpty=students.length===0&&(trashedTeachers||[]).length===0;
   return (<div style={S.page}>
     <h1 style={S.pageTitle}>🗑️ Cestino</h1><p style={S.pageSub}>Gli elementi nel cestino possono essere recuperati o eliminati definitivamente.</p>
     <div style={{display:"flex",gap:8,marginBottom:20}}>{[["students",`👤 Studenti (${students.length})`],["teachers",`🧑‍🏫 Insegnanti (${(trashedTeachers||[]).length})`]].map(([id,label])=>(<button key={id} onClick={()=>setTab(id)} style={{padding:"8px 20px",borderRadius:10,border:"none",cursor:"pointer",fontWeight:600,fontSize:14,background:tab===id?"#ef4444":"#f1f5f9",color:tab===id?"white":"#374151"}}>{label}</button>))}</div>
