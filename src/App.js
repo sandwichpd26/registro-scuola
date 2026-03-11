@@ -13,8 +13,8 @@ import { useState, useMemo, useEffect, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 // ── ⚙️  CONFIGURA QUI ──────────────────────────────────────────────
-const SUPABASE_URL  = "https://kckgcwaeqoshyyjlyiur.supabase.co"; // ← sostituisci
-const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtja2djd2FlcW9zaHl5amx5aXVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMwMjQwNjQsImV4cCI6MjA4ODYwMDA2NH0.YdtDNaig_ScfMqh5iQsncP_inQoBdmXlpb-rSO3GsEc";                                // ← sostituisci
+const SUPABASE_URL  = "https://XXXXXXXXXXXXXXXX.supabase.co"; // ← sostituisci
+const SUPABASE_ANON = "eyJ...";                                // ← sostituisci
 // ──────────────────────────────────────────────────────────────────
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON);
@@ -36,6 +36,9 @@ const db = {
   async getTeachers()  { const {data,error}=await supabase.from("teachers").select("*").order("name"); if(error)throw error; return data||[]; },
   async upsertTeacher(t) { const {data,error}=await supabase.from("teachers").upsert(t).select().single(); if(error)throw error; return data; },
   async deleteTeacher(id){ const {error}=await supabase.from("teachers").delete().eq("id",id); if(error)throw error; },
+  async trashTeacher(id){ const {data,error}=await supabase.from("teachers").update({deleted:true,archived:false}).eq("id",id).select().single(); if(error)throw error; return data; },
+  async archiveTeacher(id){ const {data,error}=await supabase.from("teachers").update({archived:true,deleted:false}).eq("id",id).select().single(); if(error)throw error; return data; },
+  async restoreTeacher(id){ const {data,error}=await supabase.from("teachers").update({deleted:false,archived:false}).eq("id",id).select().single(); if(error)throw error; return data; },
 
   async getStudents()  { const {data,error}=await supabase.from("students").select("*").order("name"); if(error)throw error; return data||[]; },
   async upsertStudent(s) { const {data,error}=await supabase.from("students").upsert(s).select().single(); if(error)throw error; return data; },
@@ -111,6 +114,9 @@ export default function App() {
   const allActiveStudents = myStudents.filter(s=>s.active&&!s.deleted);
   const archivedStudents = isAdmin ? students.filter(s=>!s.active&&!s.deleted) : [];
   const trashedStudents  = isAdmin ? students.filter(s=>s.deleted) : [];
+  const activeTeachers   = teachers.filter(t=>t.role==="teacher"&&!t.deleted&&!t.archived);
+  const archivedTeachers = isAdmin ? teachers.filter(t=>t.role==="teacher"&&t.archived&&!t.deleted) : [];
+  const trashedTeachers  = isAdmin ? teachers.filter(t=>t.role==="teacher"&&t.deleted) : [];
   const safePage         = (!isAdmin&&["archive","admin","trash"].includes(page))?"home":page;
   const [profileModal,setProfileModal]=useState(false);
   const myClasses        = currentUser?(isAdmin?classes:classes.filter(c=>c.teacher_id===currentUser.id)):[];
@@ -132,8 +138,23 @@ export default function App() {
   const delTeacher = async id => {
     const prev=teachers;
     setTeachers(p=>p.filter(t=>t.id!==id));
-    try { await db.deleteTeacher(id); showToast("Insegnante rimosso"); }
+    try { await db.deleteTeacher(id); showToast("Insegnante eliminato definitivamente"); }
     catch(e) { setTeachers(prev); showToast("Errore","err"); }
+  };
+  const trashTeacher = async id => {
+    setTeachers(p=>p.map(t=>t.id===id?{...t,deleted:true,archived:false}:t));
+    try { await db.trashTeacher(id); showToast("Insegnante spostato nel cestino"); }
+    catch(e) { showToast("Errore","err"); }
+  };
+  const archiveTeacher = async id => {
+    setTeachers(p=>p.map(t=>t.id===id?{...t,archived:true,deleted:false}:t));
+    try { await db.archiveTeacher(id); showToast("Insegnante archiviato"); }
+    catch(e) { showToast("Errore","err"); }
+  };
+  const restoreTeacher = async id => {
+    setTeachers(p=>p.map(t=>t.id===id?{...t,deleted:false,archived:false}:t));
+    try { await db.restoreTeacher(id); showToast("Insegnante ripristinato"); }
+    catch(e) { showToast("Errore","err"); }
   };
 
   const addStudent = async s => {
@@ -292,9 +313,9 @@ export default function App() {
     calendar: <CalendarPage user={currentUser} students={myStudents} lessons={lessons} classLessons={classLessons} classes={myClasses} teachers={teachers} isAdmin={isAdmin} notes={myNotes} onAddNote={addNote} onUpdateNote={updateNote} onDeleteNote={deleteNote}/>,
     reports:  <ReportsPage  user={currentUser} students={isAdmin?students:activeStudents} classes={myClasses} lessons={lessons} classLessons={classLessons} teachers={teachers} isAdmin={isAdmin}/>,
     report_s: <StudentReportPage user={currentUser} students={myStudents.filter(s=>s.active&&!s.deleted)} lessons={lessons} isAdmin={isAdmin}/>,
-    archive:  isAdmin?<ArchivePage students={archivedStudents} teachers={teachers} lessons={lessons} onRestore={restoreStudent} onTrash={trashStudent}/>:null,
-    trash:    isAdmin?<TrashPage students={trashedStudents} onRestore={restoreFromTrash} onDeleteForever={deleteForever}/>:null,
-    admin:    isAdmin?<AdminPage   teachers={teachers} students={students} lessons={lessons} classLessons={classLessons} onAddTeacher={addTeacher} onDeleteTeacher={delTeacher} onUpdateTeacher={updateTeacher} onReassignStudent={reassignStudent}/>:null,
+    archive:  isAdmin?<ArchivePage students={archivedStudents} teachers={teachers} archivedTeachers={archivedTeachers} lessons={lessons} onRestore={restoreStudent} onTrash={trashStudent} onArchiveTeacher={archiveTeacher} onRestoreTeacher={restoreTeacher} onTrashTeacher={trashTeacher}/>:null,
+    trash:    isAdmin?<TrashPage students={trashedStudents} trashedTeachers={trashedTeachers} onRestore={restoreFromTrash} onDeleteForever={deleteForever} onRestoreTeacher={restoreTeacher} onDeleteTeacherForever={delTeacher}/>:null,
+    admin:    isAdmin?<AdminPage   teachers={activeTeachers} students={students} lessons={lessons} classLessons={classLessons} onAddTeacher={addTeacher} onDeleteTeacher={trashTeacher} onUpdateTeacher={updateTeacher} onReassignStudent={reassignStudent} onArchiveTeacher={archiveTeacher}/>:null,
   };
 
   return (
@@ -308,7 +329,7 @@ export default function App() {
           setCurrentUser(null); setPage("login");
           setStudents([]); setLessons([]); setClasses([]); setClassLessons([]); setNotes([]);
         }}
-        archivedCount={isAdmin?archivedStudents.length:0} trashedCount={isAdmin?trashedStudents.length:0} alertCount={alertCount} onProfile={()=>setProfileModal(true)}
+        archivedCount={isAdmin?(archivedStudents.length+archivedTeachers.length):0} trashedCount={isAdmin?(trashedStudents.length+trashedTeachers.length):0} alertCount={alertCount} onProfile={()=>setProfileModal(true)}
       />
       <main style={S.main}><div className="page-anim" key={safePage}>{pages[safePage]||pages.home}</div></main>
       {profileModal&&<ProfileModal user={currentUser} onSave={async(pw)=>{try{await db.upsertTeacher({id:currentUser.id,password:pw});showToast("Password aggiornata");}catch(e){showToast("Errore","err");}setProfileModal(false);}} onClose={()=>setProfileModal(false)}/>}
@@ -464,7 +485,7 @@ function StudentsPage({user,students,classes,teachers,lessons,classLessons,isAdm
         <div style={S.cardTop}><div style={{...S.studentAvatar,background:"#f59e0b20",color:"#f59e0b",fontSize:20}}>👥</div><div style={{flex:1}}><div style={S.studentName}>{cls.name}</div><div style={S.studentMeta}>{teacher?.name||"—"} · {cls.schedule}{cls.company&&<span style={{marginLeft:6,background:"#e0f2fe",color:"#0369a1",borderRadius:6,padding:"1px 6px",fontSize:11}}>🏢 {cls.company}</span>}</div></div></div>
         <div style={{marginBottom:12}}><div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}><span style={{color:"#6b7280"}}>Pacchetto</span><span style={{fontWeight:700,color:pkgColor(cls)}}>{cls.package_used}/{cls.package_total} · <span style={{color:rem<=3?"#ef4444":"#10b981"}}>{rem} rimaste</span></span></div><div style={{height:6,background:"#f1f5f9",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:`${Math.min(100,(cls.package_used/cls.package_total)*100)}%`,background:pkgColor(cls),borderRadius:3}}/></div></div>
         <div style={S.cardStats}><div style={S.miniStat}><span style={S.miniStatVal}>{clsS.length}</span><span style={S.miniStatLbl}>studenti</span></div><div style={S.miniStat}><span style={S.miniStatVal}>{clsL.length}/{cls.package_total}</span><span style={S.miniStatLbl}>lezioni</span></div><div style={S.miniStat}><span style={S.miniStatVal}>{lastL?fmtDate(lastL.date):"—"}</span><span style={S.miniStatLbl}>ultima</span></div></div>
-        <div style={{marginBottom:10,display:"flex",flexWrap:"wrap",gap:4}}>{clsS.map(s=><span key={s.id} style={{fontSize:11,background:"#f1f5f9",borderRadius:6,padding:"2px 8px"}}>{s.name.split(" ")[0]}</span>)}</div>
+        <div style={{marginBottom:10,display:"flex",flexWrap:"wrap",gap:4}}>{clsS.map(s=><span key={s.id} style={{fontSize:11,background:"#f1f5f9",borderRadius:6,padding:"2px 8px"}}>{s.name.split(" ")[0]}</span>)}{(cls.class_member_names||[]).map((n,i)=><span key={"m"+i} style={{fontSize:11,background:"#eff6ff",color:"#3b82f6",borderRadius:6,padding:"2px 8px"}}>{n.split(" ")[0]}</span>)}</div>
         <div style={S.cardActions}><button style={S.btnSm} onClick={()=>setDC(cls)}>Scheda</button></div>
       </div>);
     })}</div>))}
@@ -511,7 +532,7 @@ function ClassDetailModal({cls,students,classLessons,onClose}) {
   return (<Overlay onClose={onClose} wide>
     <h2 style={S.modalTitle}>Scheda Classe: {cls.name}</h2>
     <div style={{background:"#f0fdf4",borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:13,color:"#166534"}}>📦 <strong>{cls.package_used}/{cls.package_total}</strong> · <strong style={{color:pkgRemaining(cls)<=3?"#ef4444":"#10b981"}}>{pkgRemaining(cls)} rimaste</strong> · {cls.schedule}</div>
-    <div style={{marginBottom:12,display:"flex",flexWrap:"wrap",gap:6}}>{students.map(s=><span key={s.id} style={{background:"#eff6ff",color:"#3b82f6",borderRadius:8,padding:"4px 12px",fontSize:13,fontWeight:600}}>{s.name} <LevelBadge level={s.level} small/></span>)}</div>
+    <div style={{marginBottom:12,display:"flex",flexWrap:"wrap",gap:6}}>{students.map(s=><span key={s.id} style={{background:"#eff6ff",color:"#3b82f6",borderRadius:8,padding:"4px 12px",fontSize:13,fontWeight:600}}>{s.name} <LevelBadge level={s.level} small/></span>)}{(cls.class_member_names||[]).map((n,i)=><span key={"m"+i} style={{background:"#f0fdf4",color:"#16a34a",borderRadius:8,padding:"4px 12px",fontSize:13,fontWeight:600}}>👤 {n}</span>)}</div>
     <div style={{...S.tableWrap,maxHeight:300,overflowY:"auto"}}><table style={S.table}><thead><tr><th style={S.th}>N°</th><th style={S.th}>Data</th><th style={S.th}>Argomento</th><th style={S.th}>Modalità</th><th style={S.th}>Presenze</th></tr></thead>
       <tbody>{sorted.map((l,i)=><tr key={l.id} style={S.tr}><td style={{...S.td,fontWeight:700,color:"#6366f1"}}>{i+1}/{cls.package_total}</td><td style={S.td}>{fmtDate(l.date)}</td><td style={S.td}>{l.topic}</td><td style={S.td}><ModeBadge mode={l.mode} zoom={l.zoom_account}/></td><td style={S.td}><div style={{display:"flex",gap:4,flexWrap:"wrap"}}>{students.map(s=>{const p=l.attendances?.[s.id]??false;return<span key={s.id} style={{padding:"2px 8px",borderRadius:12,fontSize:11,fontWeight:600,background:p?"#d1fae5":"#fee2e2",color:p?"#065f46":"#991b1b"}}>{p?"✓":"✗"} {s.name.split(" ")[0]}</span>;})}</div></td></tr>)}</tbody>
     </table></div>
@@ -599,7 +620,7 @@ function ClassesPage({user,students,classes,classLessons,teachers,isAdmin,onAddC
           <div style={S.cardTop}><div style={{...S.studentAvatar,background:"#f59e0b20",color:"#f59e0b",fontSize:20}}>👥</div><div style={{flex:1}}><div style={S.studentName}>{cls.name}</div><div style={S.studentMeta}>{teacher?.name||"—"} · {cls.schedule}</div></div></div>
           <div style={{marginBottom:12}}><div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}><span style={{color:"#6b7280"}}>Pacchetto</span><span style={{fontWeight:700}}>{cls.package_used}/{cls.package_total} · <span style={{color:rem<=3?"#ef4444":"#10b981"}}>{rem} rimaste</span></span></div><div style={{height:6,background:"#f1f5f9",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:`${Math.min(100,(cls.package_used/cls.package_total)*100)}%`,background:pkgColor(cls),borderRadius:3}}/></div></div>
           <div style={S.cardStats}><div style={S.miniStat}><span style={S.miniStatVal}>{clsS.length}</span><span style={S.miniStatLbl}>studenti</span></div><div style={S.miniStat}><span style={S.miniStatVal}>{clsL.length}/{cls.package_total}</span><span style={S.miniStatLbl}>lezioni</span></div></div>
-          <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:10}}>{clsS.map(s=><span key={s.id} style={{fontSize:11,background:"#f1f5f9",borderRadius:6,padding:"2px 8px"}}>{s.name.split(" ")[0]}</span>)}</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:10}}>{clsS.map(s=><span key={s.id} style={{fontSize:11,background:"#f1f5f9",borderRadius:6,padding:"2px 8px"}}>{s.name.split(" ")[0]}</span>)}{(cls.class_member_names||[]).map((n,i)=><span key={"m"+i} style={{fontSize:11,background:"#eff6ff",color:"#3b82f6",borderRadius:6,padding:"2px 8px"}}>{n.split(" ")[0]}</span>)}</div>
           <div style={S.cardActions} onClick={e=>e.stopPropagation()}>{isAdmin&&<button style={S.btnSm} onClick={()=>setCM(cls)}>Modifica</button>}{isAdmin&&<button style={{...S.btnSm,...S.btnDanger}} onClick={()=>setConfirm({type:"class",id:cls.id})}>Elimina</button>}</div>
         </div>);
       })}</div>)}
@@ -610,8 +631,9 @@ function ClassesPage({user,students,classes,classLessons,teachers,isAdmin,onAddC
         <div style={{display:"flex",alignItems:"center",gap:12}}><div style={{background:"#f0fdf4",borderRadius:10,padding:"8px 16px",fontSize:13,color:"#166534",fontWeight:600}}>📦 {activeClass?.package_used}/{activeClass?.package_total} · {pkgRemaining(activeClass)} rimaste</div><button style={{...S.btnPrimary,width:"auto"}} onClick={()=>setLM("add")}>+ Nuova Lezione</button></div>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"240px 1fr",gap:24}}>
-        <div><h2 style={S.sectionTitle}>Studenti ({classStudents.length})</h2>
+        <div><h2 style={S.sectionTitle}>Partecipanti ({classStudents.length+(activeClass?.class_member_names||[]).length})</h2>
           {classStudents.map(st=>(<div key={st.id} style={{background:"white",borderRadius:12,padding:"12px 16px",border:"1px solid #f1f5f9",display:"flex",alignItems:"center",gap:10,marginBottom:8}}><div style={{...S.studentAvatar,width:34,height:34,fontSize:12}}>{st.name.split(" ").map(n=>n[0]).join("").slice(0,2)}</div><div style={{flex:1}}><div style={{fontWeight:600,fontSize:14}}>{st.name}</div></div><LevelBadge level={st.level}/></div>))}
+          {(activeClass?.class_member_names||[]).map((n,i)=>(<div key={"m"+i} style={{background:"#f0fdf4",borderRadius:12,padding:"12px 16px",border:"1px solid #bbf7d0",display:"flex",alignItems:"center",gap:10,marginBottom:8}}><div style={{...S.studentAvatar,width:34,height:34,fontSize:12,background:"#16a34a20",color:"#16a34a"}}>{n.split(" ").map(x=>x[0]).join("").slice(0,2)}</div><div style={{flex:1}}><div style={{fontWeight:600,fontSize:14}}>{n}</div><div style={{fontSize:11,color:"#9ca3af"}}>Partecipante</div></div></div>))}
         </div>
         <div><h2 style={S.sectionTitle}>Registro ({thisLessons.length}/{activeClass?.package_total})</h2>
           {thisLessons.length===0?<Empty text="Nessuna lezione"/>:(<div style={{display:"flex",flexDirection:"column",gap:12}}>
@@ -644,16 +666,23 @@ function ClassesPage({user,students,classes,classLessons,teachers,isAdmin,onAddC
 }
 
 function ClassModal({user,students,teachers,cls,onSave,onClose}) {
-  const [form,setForm]=useState(cls||{name:"",teacher_id:user.role==="admin"?"":user.id,student_ids:[],schedule:"",company:"",package_total:20,package_used:0});
+  const [form,setForm]=useState(cls||{name:"",teacher_id:user.role==="admin"?"":user.id,student_ids:[],class_member_names:cls?.class_member_names||[],schedule:"",company:"",package_total:20,package_used:0});
+  const [newMember,setNewMember]=useState("");
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   const toggle=id=>setForm(f=>({...f,student_ids:f.student_ids.includes(id)?f.student_ids.filter(x=>x!==id):[...f.student_ids,id]}));
+  const addMember=()=>{const n=newMember.trim();if(!n)return;setForm(f=>({...f,class_member_names:[...(f.class_member_names||[]),n]}));setNewMember("");};
+  const removeMember=i=>setForm(f=>({...f,class_member_names:f.class_member_names.filter((_,idx)=>idx!==i)}));
   const avail=students.filter(s=>s.is_class_student);
   return (<Overlay onClose={onClose} wide>
     <h2 style={S.modalTitle}>{cls?"Modifica Classe":"Nuova Classe"}</h2>
     <div style={S.fieldRow}><div style={S.field}><label style={S.label}>Nome classe *</label><input style={S.input} value={form.name} onChange={e=>set("name",e.target.value)} placeholder="Es. Gruppo A1 Mattino"/></div><div style={S.field}><label style={S.label}>Azienda</label><input style={S.input} value={form.company||""} onChange={e=>set("company",e.target.value)} placeholder="Es. Acme Srl"/></div></div>
     <div style={S.field}><label style={S.label}>Orario ricorrente</label><input style={S.input} value={form.schedule||""} onChange={e=>set("schedule",e.target.value)} placeholder="Es. Lunedì 09:00"/></div>
     <div style={S.fieldRow}><div style={S.field}><label style={S.label}>Lezioni pacchetto</label><input type="number" min="1" style={S.input} value={form.package_total||20} onChange={e=>set("package_total",Number(e.target.value))}/></div>{user.role==="admin"&&<div style={S.field}><label style={S.label}>Insegnante</label><select style={S.input} value={form.teacher_id||""} onChange={e=>set("teacher_id",e.target.value)}><option value="">— Seleziona —</option>{teachers.filter(t=>t.role==="teacher").map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></div>}</div>
-    <div style={S.field}><label style={S.label}>Studenti della classe</label><div style={{display:"flex",flexWrap:"wrap",gap:8,marginTop:8}}>{avail.map(s=>(<label key={s.id} style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",background:form.student_ids.includes(s.id)?"#6366f115":"#f8fafc",border:`1.5px solid ${form.student_ids.includes(s.id)?"#6366f1":"#e2e8f0"}`,borderRadius:8,padding:"6px 12px",fontSize:13}}><input type="checkbox" checked={form.student_ids.includes(s.id)} onChange={()=>toggle(s.id)}/>{s.name} <LevelBadge level={s.level} small/></label>))}</div></div>
+    <div style={S.field}><label style={S.label}>👥 Partecipanti della classe <span style={{fontWeight:400,color:"#9ca3af",fontSize:12}}>(nomi liberi, non studenti individuali)</span></label>
+      <div style={{display:"flex",gap:8,marginBottom:8}}><input style={{...S.input,flex:1}} value={newMember} onChange={e=>setNewMember(e.target.value)} onKeyDown={e=>e.key==="Enter"&&(e.preventDefault(),addMember())} placeholder="Es. Mario Rossi — premi Invio per aggiungere"/><button type="button" style={{...S.btnPrimary,width:"auto",padding:"10px 16px"}} onClick={addMember}>+</button></div>
+      {(form.class_member_names||[]).length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>{(form.class_member_names||[]).map((n,i)=>(<span key={i} style={{display:"inline-flex",alignItems:"center",gap:6,background:"#eff6ff",color:"#3b82f6",borderRadius:8,padding:"5px 12px",fontSize:13,fontWeight:600}}>{n}<button type="button" onClick={()=>removeMember(i)} style={{background:"none",border:"none",cursor:"pointer",color:"#93c5fd",fontSize:14,padding:0,lineHeight:1}}>×</button></span>))}</div>}
+    </div>
+    {avail.length>0&&<div style={S.field}><label style={S.label}>Studenti del sistema da includere <span style={{fontWeight:400,color:"#9ca3af",fontSize:12}}>(opzionale)</span></label><div style={{display:"flex",flexWrap:"wrap",gap:8,marginTop:8}}>{avail.map(s=>(<label key={s.id} style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",background:form.student_ids.includes(s.id)?"#6366f115":"#f8fafc",border:`1.5px solid ${form.student_ids.includes(s.id)?"#6366f1":"#e2e8f0"}`,borderRadius:8,padding:"6px 12px",fontSize:13}}><input type="checkbox" checked={form.student_ids.includes(s.id)} onChange={()=>toggle(s.id)}/>{s.name} <LevelBadge level={s.level} small/></label>))}</div></div>}
     <div style={S.modalActions}><button style={S.btnSecondary} onClick={onClose}>Annulla</button><button style={{...S.btnPrimary,width:"auto"}} disabled={!form.name} onClick={()=>onSave(form)}>{cls?"Salva":"Crea Classe"}</button></div>
   </Overlay>);
 }
@@ -863,11 +892,15 @@ function StudentReportPage({user,students,lessons,isAdmin}) {
 }
 
 // ── ARCHIVIO — identico all'originale ────────────────────────────
-function ArchivePage({students,teachers,lessons,onRestore,onTrash}) {
-  const [restoreModal,setRM]=useState(null);const [selected,setSel]=useState(null);const [confirmTrash,setConfirmTrash]=useState(null);
+function ArchivePage({students,teachers,archivedTeachers,lessons,onRestore,onTrash,onArchiveTeacher,onRestoreTeacher,onTrashTeacher}) {
+  const [restoreModal,setRM]=useState(null);const [selected,setSel]=useState(null);const [confirmTrash,setConfirmTrash]=useState(null);const [tab,setTab]=useState("students");
   return (<div style={S.page}>
-    <h1 style={S.pageTitle}>Archivio Studenti</h1><p style={S.pageSub}>Solo l'amministratore può accedere a questa sezione.</p>
-    {students.length===0?<Empty text="L'archivio è vuoto"/>:(<div style={S.cardGrid}>{students.map(student=>{
+    <h1 style={S.pageTitle}>Archivio</h1><p style={S.pageSub}>Solo l'amministratore può accedere a questa sezione.</p>
+    <div style={{display:"flex",gap:8,marginBottom:20}}>{[["students","👤 Studenti Archiviati"],["teachers","🧑‍🏫 Insegnanti Archiviati"]].map(([id,label])=>(<button key={id} onClick={()=>setTab(id)} style={{padding:"8px 20px",borderRadius:10,border:"none",cursor:"pointer",fontWeight:600,fontSize:14,background:tab===id?"#8b5cf6":"#f1f5f9",color:tab===id?"white":"#374151"}}>{label}</button>))}</div>
+    {tab==="teachers"&&(<div>
+      {archivedTeachers.length===0?<Empty text="Nessun insegnante archiviato"/>:(<div style={S.tableWrap}><table style={S.table}><thead><tr><th style={S.th}>Nome</th><th style={S.th}>Email</th><th style={S.th}>Telefono</th><th style={S.th}>Azioni</th></tr></thead><tbody>{archivedTeachers.map(t=>(<tr key={t.id} style={S.tr}><td style={S.td}><strong>{t.name}</strong></td><td style={S.td}>{t.email}</td><td style={S.td}>{t.phone||"—"}</td><td style={S.td}><div style={{display:"flex",gap:6}}><button style={{...S.btnSm,background:"#10b98110",color:"#10b981",border:"1px solid #10b98130"}} onClick={()=>onRestoreTeacher(t.id)}>♻️ Ripristina</button><button style={{...S.btnSm,background:"#fee2e220",color:"#dc2626",border:"1px solid #fca5a5"}} onClick={()=>onTrashTeacher(t.id)}>🗑️ Cestino</button></div></td></tr>))}</tbody></table></div>)}
+    </div>)}
+    {tab==="students"&&students.length===0?<Empty text="L'archivio studenti è vuoto"/>:(tab==="students"&&<div style={S.cardGrid}>{students.map(student=>{
       const sl=lessons.filter(l=>l.student_id===student.id);const teacher=teachers.find(t=>t.id===student.teacher_id);
       return(<div key={student.id} style={{...S.studentCard,borderLeft:"4px solid #8b5cf6"}}>
         <div style={S.cardTop}><div style={{...S.studentAvatar,background:"#8b5cf620",color:"#8b5cf6"}}>{student.name.split(" ").map(n=>n[0]).join("").slice(0,2)}</div><div style={{flex:1}}><div style={S.studentName}>{student.name}</div><div style={S.studentMeta}>Ultimo ins: {teacher?.name||"—"}</div></div><LevelBadge level={student.level}/></div>
@@ -883,11 +916,13 @@ function ArchivePage({students,teachers,lessons,onRestore,onTrash}) {
   </div>);
 }
 
-function TrashPage({students,onRestore,onDeleteForever}) {
-  const [confirmDel,setConfirmDel]=useState(null);
+function TrashPage({students,trashedTeachers,onRestore,onDeleteForever,onRestoreTeacher,onDeleteTeacherForever}) {
+  const [confirmDel,setConfirmDel]=useState(null);const [confirmDelT,setConfirmDelT]=useState(null);const [tab,setTab]=useState("students");
+  const isEmpty=students.length===0&&(trashedTeachers||[]).length===0;
   return (<div style={S.page}>
-    <h1 style={S.pageTitle}>🗑️ Cestino</h1><p style={S.pageSub}>Gli studenti nel cestino possono essere recuperati o eliminati definitivamente.</p>
-    {students.length===0?<Empty text="Il cestino è vuoto"/>:(<div style={S.cardGrid}>{students.map(student=>{
+    <h1 style={S.pageTitle}>🗑️ Cestino</h1><p style={S.pageSub}>Gli elementi nel cestino possono essere recuperati o eliminati definitivamente.</p>
+    <div style={{display:"flex",gap:8,marginBottom:20}}>{[["students",`👤 Studenti (${students.length})`],["teachers",`🧑‍🏫 Insegnanti (${(trashedTeachers||[]).length})`]].map(([id,label])=>(<button key={id} onClick={()=>setTab(id)} style={{padding:"8px 20px",borderRadius:10,border:"none",cursor:"pointer",fontWeight:600,fontSize:14,background:tab===id?"#ef4444":"#f1f5f9",color:tab===id?"white":"#374151"}}>{label}</button>))}</div>
+    {tab==="students"&&(students.length===0?<Empty text="Nessuno studente nel cestino"/>:(<div style={S.cardGrid}>{students.map(student=>{
       return(<div key={student.id} style={{...S.studentCard,borderLeft:"4px solid #ef4444",opacity:0.85}}>
         <div style={S.cardTop}><div style={{...S.studentAvatar,background:"#ef444420",color:"#ef4444"}}>{student.name.split(" ").map(n=>n[0]).join("").slice(0,2)}</div><div style={{flex:1}}><div style={S.studentName}>{student.name}</div><div style={S.studentMeta}>Livello {student.level}</div></div><LevelBadge level={student.level}/></div>
         <div style={{marginBottom:10,fontSize:12,color:"#6b7280",display:"flex",gap:12,flexWrap:"wrap"}}>{student.phone&&<span>📞 {student.phone}</span>}{student.email&&<span>✉️ {student.email}</span>}</div>
@@ -896,8 +931,10 @@ function TrashPage({students,onRestore,onDeleteForever}) {
           <button style={{...S.btnSm,background:"#ef444420",color:"#ef4444",border:"1px solid #fca5a5"}} onClick={()=>setConfirmDel(student.id)}>❌ Elimina definitivamente</button>
         </div>
       </div>);
-    })}</div>)}
+    })}</div>))}
+    {tab==="teachers"&&((trashedTeachers||[]).length===0?<Empty text="Nessun insegnante nel cestino"/>:(<div style={S.tableWrap}><table style={S.table}><thead><tr><th style={S.th}>Nome</th><th style={S.th}>Email</th><th style={S.th}>Telefono</th><th style={S.th}>Azioni</th></tr></thead><tbody>{(trashedTeachers||[]).map(t=>(<tr key={t.id} style={S.tr}><td style={S.td}><strong>{t.name}</strong></td><td style={S.td}>{t.email}</td><td style={S.td}>{t.phone||"—"}</td><td style={S.td}><div style={{display:"flex",gap:6}}><button style={{...S.btnSm,background:"#10b98110",color:"#10b981",border:"1px solid #10b98130"}} onClick={()=>onRestoreTeacher(t.id)}>♻️ Ripristina</button><button style={{...S.btnSm,background:"#ef444420",color:"#ef4444",border:"1px solid #fca5a5"}} onClick={()=>setConfirmDelT(t.id)}>❌ Elimina definitivamente</button></div></td></tr>))}</tbody></table></div>))}
     {confirmDel&&<ConfirmModal title="Elimina definitivamente" text="Attenzione: questa operazione è irreversibile. Lo studente e tutti i suoi dati verranno eliminati per sempre." onConfirm={()=>{onDeleteForever(confirmDel);setConfirmDel(null);}} onClose={()=>setConfirmDel(null)}/>}
+    {confirmDelT&&<ConfirmModal title="Elimina insegnante definitivamente" text="Attenzione: questa operazione è irreversibile. L'insegnante e tutti i suoi dati verranno eliminati per sempre." onConfirm={()=>{onDeleteTeacherForever(confirmDelT);setConfirmDelT(null);}} onClose={()=>setConfirmDelT(null)}/>}
   </div>);
 }
 
@@ -910,14 +947,14 @@ function RestoreModal({student,teachers,onRestore,onClose}) {
 }
 
 // ── AMMINISTRAZIONE — identica all'originale ──────────────────────
-function AdminPage({teachers,students,lessons,classLessons,onAddTeacher,onDeleteTeacher,onUpdateTeacher,onReassignStudent}) {
-  const [tm,setTM]=useState(false);const [confirm,setConfirm]=useState(null);const [rm,setRM]=useState(null);const [editT,setEditT]=useState(null);
+function AdminPage({teachers,students,lessons,classLessons,onAddTeacher,onDeleteTeacher,onUpdateTeacher,onReassignStudent,onArchiveTeacher}) {
+  const [tm,setTM]=useState(false);const [confirm,setConfirm]=useState(null);const [confirmArchive,setConfirmArchive]=useState(null);const [rm,setRM]=useState(null);const [editT,setEditT]=useState(null);
   const active=students.filter(s=>s.active);
   return (<div style={S.page}>
     <div style={S.pageHeader}><div><h1 style={S.pageTitle}>Amministrazione</h1><p style={S.pageSub}>Gestione insegnanti e riassegnazioni</p></div><button style={{...S.btnPrimary,width:"auto"}} onClick={()=>setTM(true)}>+ Nuovo Insegnante</button></div>
     <div style={S.section}><h2 style={S.sectionTitle}>Insegnanti</h2>
       <div style={S.tableWrap}><table style={S.table}><thead><tr><th style={S.th}>Nome</th><th style={S.th}>Email</th><th style={S.th}>Telefono</th><th style={S.th}>Colore</th><th style={S.th}>Studenti</th><th style={S.th}>Lezioni</th><th style={S.th}></th></tr></thead>
-        <tbody>{teachers.filter(t=>t.role==="teacher").map(t=>{
+        <tbody>{teachers.map(t=>{
           const lCount=lessons.filter(l=>l.teacher_id===t.id).length+classLessons.filter(l=>l.teacher_id===t.id).length;
           return(<tr key={t.id} style={S.tr}>
             <td style={S.td}><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{width:10,height:10,borderRadius:"50%",background:t.color,display:"inline-block"}}/><strong>{t.name}</strong></div></td>
@@ -925,7 +962,7 @@ function AdminPage({teachers,students,lessons,classLessons,onAddTeacher,onDelete
             <td style={S.td}><div style={{display:"flex",gap:4}}>{T_COLORS.map(c=><button key={c} onClick={()=>onUpdateTeacher({...t,color:c})} style={{width:18,height:18,borderRadius:"50%",background:c,border:t.color===c?"2px solid #0f172a":"2px solid transparent",cursor:"pointer"}}/> )}</div></td>
             <td style={S.td}>{students.filter(s=>s.teacher_id===t.id&&s.active).length}</td>
             <td style={S.td}>{lCount}</td>
-            <td style={S.td}><div style={{display:"flex",gap:4}}><button style={S.iconBtn} onClick={()=>setEditT(t)}>✏️</button><button style={{...S.iconBtn,color:"#ef4444"}} onClick={()=>setConfirm(t.id)}>🗑️</button></div></td>
+            <td style={S.td}><div style={{display:"flex",gap:4}}><button style={S.iconBtn} onClick={()=>setEditT(t)}>✏️</button><button style={{...S.iconBtn,color:"#8b5cf6",fontSize:13}} onClick={()=>setConfirmArchive(t.id)} title="Archivia">🗄️</button><button style={{...S.iconBtn,color:"#ef4444"}} onClick={()=>setConfirm(t.id)} title="Cestino">🗑️</button></div></td>
           </tr>);
         })}</tbody>
       </table></div>
@@ -936,7 +973,8 @@ function AdminPage({teachers,students,lessons,classLessons,onAddTeacher,onDelete
       </table></div>
     </div>
     {(tm||editT)&&<TeacherModal teacher={editT} onSave={t=>{editT?onUpdateTeacher(t):onAddTeacher(t);setTM(false);setEditT(null);}} onClose={()=>{setTM(false);setEditT(null);}}/>}
-    {confirm&&<ConfirmModal title="Rimuovi insegnante" text="I dati resteranno." onConfirm={()=>{onDeleteTeacher(confirm);setConfirm(null);}} onClose={()=>setConfirm(null)}/>}
+    {confirm&&<ConfirmModal title="Cestino insegnante" text="L'insegnante sarà spostato nel cestino. Potrai recuperarlo o eliminarlo definitivamente." onConfirm={()=>{onDeleteTeacher(confirm);setConfirm(null);}} onClose={()=>setConfirm(null)}/>}
+    {confirmArchive&&<ConfirmModal title="Archivia insegnante" text="L'insegnante sarà archiviato e non potrà più accedere al sistema." onConfirm={()=>{onArchiveTeacher(confirmArchive);setConfirmArchive(null);}} onClose={()=>setConfirmArchive(null)}/>}
     {rm&&<ReassignModal student={rm} teachers={teachers.filter(t=>t.role==="teacher")} onReassign={(tid)=>{onReassignStudent(rm.id,tid);setRM(null);}} onClose={()=>setRM(null)}/>}
   </div>);
 }
