@@ -27,6 +27,58 @@ const LEVELS   = Array.from({length:50},(_,i)=>i+1);
 const DURATIONS= [30,45,60,90,120];
 const T_COLORS = ["#6366f1","#10b981","#f59e0b","#ef4444","#8b5cf6","#06b6d4","#ec4899"];
 
+const THEMES = {
+  indigo: {
+    name: "Viola/Indigo", emoji: "🟣",
+    primary: "#6366f1", primaryLight: "#eef2ff", primaryDark: "#4f46e5",
+    sidebar: "#0f172a", sidebarHover: "#1e293b",
+    accent: "#818cf8",
+  },
+  ocean: {
+    name: "Blu Oceano", emoji: "🔵",
+    primary: "#0ea5e9", primaryLight: "#e0f2fe", primaryDark: "#0284c7",
+    sidebar: "#0c1a2e", sidebarHover: "#162032",
+    accent: "#38bdf8",
+  },
+  emerald: {
+    name: "Verde Smeraldo", emoji: "🟢",
+    primary: "#10b981", primaryLight: "#d1fae5", primaryDark: "#059669",
+    sidebar: "#022c22", sidebarHover: "#064e3b",
+    accent: "#34d399",
+  },
+  sunset: {
+    name: "Rosso/Arancio", emoji: "🟠",
+    primary: "#f97316", primaryLight: "#fff7ed", primaryDark: "#ea580c",
+    sidebar: "#1c0a00", sidebarHover: "#2d1200",
+    accent: "#fb923c",
+  },
+  rose: {
+    name: "Rosa/Fucsia", emoji: "🌸",
+    primary: "#ec4899", primaryLight: "#fdf2f8", primaryDark: "#db2777",
+    sidebar: "#1a0010", sidebarHover: "#2d0020",
+    accent: "#f472b6",
+  },
+  sky: {
+    name: "Azzurro", emoji: "🩵",
+    primary: "#06b6d4", primaryLight: "#ecfeff", primaryDark: "#0891b2",
+    sidebar: "#012028", sidebarHover: "#023040",
+    accent: "#22d3ee",
+  },
+  dark: {
+    name: "Grigio Scuro", emoji: "🌑",
+    primary: "#6b7280", primaryLight: "#f3f4f6", primaryDark: "#4b5563",
+    sidebar: "#111111", sidebarHover: "#222222",
+    accent: "#9ca3af",
+  },
+};
+
+const getTheme = () => {
+  try { return THEMES[localStorage.getItem("si_theme")] || THEMES.indigo; } catch { return THEMES.indigo; }
+};
+const saveTheme = (key) => {
+  try { localStorage.setItem("si_theme", key); } catch {}
+};
+
 const pkgRemaining = o => Math.max(0,(o?.package_total||0)-(o?.package_used||0));
 const pkgColor     = o => { const r=pkgRemaining(o); return r<=0?"#ef4444":r<=3?"#f59e0b":"#10b981"; };
 
@@ -62,6 +114,9 @@ const db = {
 
 // ── APP ROOT ──────────────────────────────────────────────────────
 export default function App() {
+  const [theme,setThemeState]          = useState(getTheme);
+  const th = theme;
+  const applyTheme = (key) => { saveTheme(key); setThemeState(THEMES[key]||THEMES.indigo); };
   const [teachers,setTeachers]         = useState([]);
   const [students,setStudents]         = useState([]);
   const [lessons,setLessons]           = useState([]);
@@ -324,7 +379,7 @@ export default function App() {
       {loading && <div style={S.loadingBar}><div style={S.loadingBarFill}/></div>}
       {/* Toast notifiche */}
       {toast && <Toast msg={toast.msg} type={toast.type}/>}
-      <Sidebar user={currentUser} page={safePage} setPage={setPage} isAdmin={isAdmin}
+      <Sidebar user={currentUser} page={safePage} setPage={setPage} isAdmin={isAdmin} theme={th}
         onLogout={()=>{
           setCurrentUser(null); setPage("login");
           setStudents([]); setLessons([]); setClasses([]); setClassLessons([]); setNotes([]);
@@ -332,21 +387,28 @@ export default function App() {
         archivedCount={isAdmin?(archivedStudents.length+archivedTeachers.length):0} trashedCount={isAdmin?(trashedStudents.length+trashedTeachers.length):0} alertCount={alertCount} onProfile={()=>setProfileModal(true)}
       />
       <main style={S.main}><div className="page-anim" key={safePage}>{pages[safePage]||pages.home}</div></main>
-      {profileModal&&<ProfileModal user={currentUser} onSave={async(pw)=>{try{await db.upsertTeacher({id:currentUser.id,password:pw});showToast("Password aggiornata");}catch(e){showToast("Errore","err");}setProfileModal(false);}} onClose={()=>setProfileModal(false)}/>}
+      {profileModal&&<ProfileModal user={currentUser} theme={th} themes={THEMES} onApplyTheme={applyTheme} onSave={async(pw)=>{try{await db.upsertTeacher({id:currentUser.id,password:pw});showToast("Password aggiornata");}catch(e){showToast("Errore","err");}setProfileModal(false);}} onClose={()=>setProfileModal(false)}/>}
     </div>
   );
 }
 
-function ProfileModal({user,onSave,onClose}) {
+function ProfileModal({user,onSave,onClose,theme,themes,onApplyTheme}) {
   const [pw,setPw]=useState("");const [pw2,setPw2]=useState("");const [err,setErr]=useState("");
+  const th=theme||THEMES.indigo;
   const save=()=>{if(pw.length<4){setErr("Minimo 4 caratteri");return;}if(pw!==pw2){setErr("Le password non coincidono");return;}onSave(pw);};
   return (<Overlay onClose={onClose}><h2 style={S.modalTitle}>👤 Il tuo profilo</h2>
     <div style={{background:"#f0fdf4",borderRadius:10,padding:"12px 16px",marginBottom:16,fontSize:14}}><strong>{user.name}</strong><br/><span style={{color:"#6b7280"}}>{user.email}</span></div>
+    <div style={{fontWeight:700,fontSize:14,marginBottom:12,color:"#374151"}}>🎨 Tema colori</div>
+    <div style={{display:"flex",flexWrap:"wrap",gap:10,marginBottom:20}}>{Object.entries(themes||THEMES).map(([key,t])=>(
+      <button key={key} onClick={()=>onApplyTheme(key)} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 14px",borderRadius:10,border:`2px solid ${th===t?"#0f172a":t.primary+"40"}`,background:th===t?t.primaryLight:"white",cursor:"pointer",fontWeight:600,fontSize:13,color:th===t?t.primaryDark:"#374151",transition:"all 0.15s"}}>
+        <span style={{width:16,height:16,borderRadius:"50%",background:t.primary,display:"inline-block",flexShrink:0}}/>{t.emoji} {t.name}{th===t&&<span style={{color:t.primaryDark,fontSize:11}}> ✓</span>}
+      </button>
+    ))}</div>
     <div style={{fontWeight:700,fontSize:14,marginBottom:12,color:"#374151"}}>🔒 Cambia password</div>
     {err&&<div style={S.error}>{err}</div>}
     <div style={S.field}><label style={S.label}>Nuova password</label><input type="password" style={S.input} value={pw} onChange={e=>{setPw(e.target.value);setErr("");}}/></div>
     <div style={S.field}><label style={S.label}>Conferma password</label><input type="password" style={S.input} value={pw2} onChange={e=>{setPw2(e.target.value);setErr("");}}/></div>
-    <div style={S.modalActions}><button style={S.btnSecondary} onClick={onClose}>Annulla</button><button style={{...S.btnPrimary,width:"auto"}} disabled={!pw} onClick={save}>Aggiorna Password</button></div>
+    <div style={S.modalActions}><button style={S.btnSecondary} onClick={onClose}>Annulla</button><button style={{...S.btnPrimary,width:"auto",background:th.primary}} disabled={!pw} onClick={save}>Aggiorna Password</button></div>
   </Overlay>);
 }
 
@@ -374,8 +436,8 @@ function LoginScreen({teachers,onLogin}) {
     else  { setErr("Email o password non corretti"); setBusy(false); }
   };
   return (<div style={S.loginBg}><div style={S.loginCard}>
-    <div style={S.loginLogo}>🎓</div>
-    <h1 style={S.loginTitle}>English School</h1>
+    <div style={S.loginLogo}>🥪</div>
+    <h1 style={S.loginTitle}>Sandwich Institute</h1>
     <p style={S.loginSub}>Registro Elettronico</p>
     <div style={S.field}><label style={S.label}>Email</label>
       <input style={S.input} type="email" value={email} onChange={e=>{setEmail(e.target.value);setErr("");}} onKeyDown={e=>e.key==="Enter"&&go()} autoFocus/>
@@ -391,12 +453,13 @@ function LoginScreen({teachers,onLogin}) {
 }
 
 // ── SIDEBAR — identica all'originale ─────────────────────────────
-function Sidebar({user,page,setPage,isAdmin,onLogout,onProfile,archivedCount,trashedCount,alertCount}) {
+function Sidebar({user,page,setPage,isAdmin,onLogout,onProfile,archivedCount,trashedCount,alertCount,theme}) {
+  const th=theme||THEMES.indigo;
   const items=[{id:"home",icon:"🏠",label:"Dashboard"},{id:"students",icon:"👤",label:"Studenti & Classi"},{id:"lessons",icon:"📚",label:"Lezioni Individuali"},{id:"classes",icon:"👥",label:"Lezioni di Classe"},{id:"calendar",icon:"📅",label:"Calendario"},{id:"reports",icon:"📊",label:"Report",badge:alertCount>0?`⚠️ ${alertCount}`:null,warn:true},{id:"report_s",icon:"📋",label:"Report Studenti"},...(isAdmin?[{id:"archive",icon:"🗄️",label:"Archivio",badge:archivedCount>0?archivedCount:null},{id:"trash",icon:"🗑️",label:"Cestino",badge:trashedCount>0?trashedCount:null},{id:"admin",icon:"⚙️",label:"Amministrazione"}]:[])];
-  return (<aside style={S.sidebar}>
-    <div style={S.sidebarTop}><div style={S.sidebarLogo}>🎓</div><div><div style={S.sidebarBrand}>English School</div><div style={{color:"#475569",fontSize:10}}>Registro</div></div></div>
-    <nav style={S.nav}>{items.map(item=>(<button key={item.id} className="nav-item" style={{...S.navItem,...(page===item.id?S.navItemActive:{})}} onClick={()=>setPage(item.id)}><span style={S.navIcon}>{item.icon}</span><span style={{flex:1}}>{item.label}</span>{item.badge&&<span style={{...S.badge,...(item.warn?{background:"#ef444420",color:"#ef4444"}:{})}}>{item.badge}</span>}</button>))}</nav>
-    <div style={S.sidebarBottom}><div style={{...S.userChip,cursor:"pointer"}} onClick={onProfile}><div style={S.avatar}>{user.name[0]}</div><div><div style={S.userName}>{user.name}</div><div style={S.userRole}>{user.role==="admin"?"Amministratore":"Insegnante"}</div></div></div><button style={{...S.logoutBtn,marginBottom:4}} onClick={onProfile}>👤 Profilo</button><button style={S.logoutBtn} onClick={onLogout}>Esci →</button></div>
+  return (<aside style={{...S.sidebar,background:th.sidebar}}>
+    <div style={{...S.sidebarTop,borderColor:th.sidebarHover}}><div style={S.sidebarLogo}>🥪</div><div><div style={S.sidebarBrand}>Sandwich Institute</div><div style={{color:"#475569",fontSize:10}}>Registro</div></div></div>
+    <nav style={S.nav}>{items.map(item=>(<button key={item.id} className="nav-item" style={{...S.navItem,...(page===item.id?{...S.navItemActive,background:th.primary}:{})}} onClick={()=>setPage(item.id)}><span style={S.navIcon}>{item.icon}</span><span style={{flex:1}}>{item.label}</span>{item.badge&&<span style={{...S.badge,...(item.warn?{background:"#ef444420",color:"#ef4444"}:{background:th.primary+"30",color:th.accent})}}>{item.badge}</span>}</button>))}</nav>
+    <div style={{...S.sidebarBottom,borderColor:th.sidebarHover}}><div style={{...S.userChip,cursor:"pointer"}} onClick={onProfile}><div style={{...S.avatar,background:th.primary}}>{user.name[0]}</div><div><div style={S.userName}>{user.name}</div><div style={S.userRole}>{user.role==="admin"?"Amministratore":"Insegnante"}</div></div></div><button style={{...S.logoutBtn,borderColor:th.sidebarHover,marginBottom:4}} onClick={onProfile}>👤 Profilo</button><button style={{...S.logoutBtn,borderColor:th.sidebarHover}} onClick={onLogout}>Esci →</button></div>
   </aside>);
 }
 
