@@ -13,8 +13,8 @@ import { useState, useMemo, useEffect, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 // ── ⚙️  CONFIGURA QUI ──────────────────────────────────────────────
-const SUPABASE_URL  = "https://kckgcwaeqoshyyjlyiur.supabase.co"; // ← sostituisci
-const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtja2djd2FlcW9zaHl5amx5aXVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMwMjQwNjQsImV4cCI6MjA4ODYwMDA2NH0.YdtDNaig_ScfMqh5iQsncP_inQoBdmXlpb-rSO3GsEc";                                // ← sostituisci
+const SUPABASE_URL  = "https://XXXXXXXXXXXXXXXX.supabase.co"; // ← sostituisci
+const SUPABASE_ANON = "eyJ...";                                // ← sostituisci
 // ──────────────────────────────────────────────────────────────────
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON);
@@ -107,9 +107,12 @@ export default function App() {
 
   const isAdmin          = currentUser?.role==="admin";
   const myStudents       = isAdmin ? students : students.filter(s=>s.teacher_id===currentUser?.id);
-  const activeStudents   = myStudents.filter(s=>s.active);
-  const archivedStudents = isAdmin ? students.filter(s=>!s.active) : [];
-  const safePage         = (!isAdmin&&["archive","admin"].includes(page))?"home":page;
+  const activeStudents   = myStudents.filter(s=>s.active&&!s.deleted&&!s.is_class_student);
+  const allActiveStudents = myStudents.filter(s=>s.active&&!s.deleted);
+  const archivedStudents = isAdmin ? students.filter(s=>!s.active&&!s.deleted) : [];
+  const trashedStudents  = isAdmin ? students.filter(s=>s.deleted) : [];
+  const safePage         = (!isAdmin&&["archive","admin","trash"].includes(page))?"home":page;
+  const [profileModal,setProfileModal]=useState(false);
   const myClasses        = currentUser?(isAdmin?classes:classes.filter(c=>c.teacher_id===currentUser.id)):[];
 
   // ── CRUD — ogni operazione aggiorna lo state ottimisticamente
@@ -154,6 +157,22 @@ export default function App() {
     try { await db.upsertStudent({id,active:true,teacher_id:tid}); showToast("Studente ripristinato"); }
     catch(e) { showToast("Errore","err"); }
   };
+  const trashStudent = async id => {
+    setStudents(p=>p.map(x=>x.id===id?{...x,deleted:true}:x));
+    try { await db.upsertStudent({id,deleted:true}); showToast("Studente spostato nel cestino"); }
+    catch(e) { showToast("Errore","err"); }
+  };
+  const restoreFromTrash = async (id) => {
+    setStudents(p=>p.map(x=>x.id===id?{...x,deleted:false,active:true}:x));
+    try { await db.upsertStudent({id,deleted:false,active:true}); showToast("Studente ripristinato"); }
+    catch(e) { showToast("Errore","err"); }
+  };
+  const deleteForever = async id => {
+    const prev=students;
+    setStudents(p=>p.filter(x=>x.id!==id));
+    try { await supabase.from("students").delete().eq("id",id); showToast("Studente eliminato definitivamente"); }
+    catch(e) { setStudents(prev); showToast("Errore","err"); }
+  };
   const reassignStudent = async (id,tid) => {
     setStudents(p=>p.map(x=>x.id===id?{...x,teacher_id:tid}:x));
     try { await db.upsertStudent({id,teacher_id:tid}); showToast("Studente riassegnato"); }
@@ -167,6 +186,20 @@ export default function App() {
     catch(e) { showToast("Errore aggiornamento pacchetto","err"); }
   };
 
+  const addRecurringLessons = async (baseLesson, times) => {
+    const groupId = uid();
+    const lessons = Array.from({length: times}, (_, i) => {
+      const d = new Date(baseLesson.date);
+      d.setDate(d.getDate() + i * 7);
+      return {...baseLesson, id: uid(), teacher_id: currentUser.id, date: d.toISOString().split("T")[0], recurring_group: groupId};
+    });
+    setLessons(p=>[...lessons,...p]);
+    lessons.forEach(obj=>bump(obj.student_id,1));
+    try {
+      for(const obj of lessons) await db.upsertLesson(obj);
+      showToast(`${times} lezioni registrate ✓`);
+    } catch(e) { showToast("Errore salvataggio","err"); }
+  };
   const addLesson = async l => {
     const obj={...l,id:uid(),teacher_id:currentUser.id};
     setLessons(p=>[obj,...p]); bump(l.student_id,1);
@@ -253,12 +286,14 @@ export default function App() {
 
   const pages = {
     home:     <HomePage     user={currentUser} students={myStudents} lessons={lessons} classLessons={classLessons} classes={myClasses} teachers={teachers} setPage={setPage} isAdmin={isAdmin}/>,
-    students: <StudentsPage user={currentUser} students={activeStudents} classes={myClasses} teachers={teachers} lessons={lessons} classLessons={classLessons} isAdmin={isAdmin} onAdd={addStudent} onUpdate={updateStudent} onArchive={archiveStudent}/>,
-    lessons:  <LessonsPage  user={currentUser} students={activeStudents} lessons={lessons} onAdd={addLesson} onUpdate={updateLesson} onDelete={deleteLesson}/>,
-    classes:  <ClassesPage  user={currentUser} students={activeStudents} classes={myClasses} classLessons={myClassLessons} teachers={teachers} isAdmin={isAdmin} onAddClass={addClass} onUpdateClass={updateClass} onDeleteClass={deleteClass} onAddClassLesson={addClassLesson} onUpdateClassLesson={updateClassLesson} onDeleteClassLesson={deleteClassLesson}/>,
+    students: <StudentsPage user={currentUser} students={allActiveStudents} classes={myClasses} teachers={teachers} lessons={lessons} classLessons={classLessons} isAdmin={isAdmin} onAdd={addStudent} onUpdate={updateStudent} onArchive={archiveStudent} onTrash={trashStudent}/>,
+    lessons:  <LessonsPage  user={currentUser} students={activeStudents} lessons={lessons} teachers={teachers} isAdmin={isAdmin} onAdd={addLesson} onAddRecurring={addRecurringLessons} onUpdate={updateLesson} onDelete={deleteLesson}/>,
+    classes:  <ClassesPage  user={currentUser} students={allActiveStudents} classes={myClasses} classLessons={myClassLessons} teachers={teachers} isAdmin={isAdmin} onAddClass={addClass} onUpdateClass={updateClass} onDeleteClass={deleteClass} onAddClassLesson={addClassLesson} onUpdateClassLesson={updateClassLesson} onDeleteClassLesson={deleteClassLesson}/>,
     calendar: <CalendarPage user={currentUser} students={myStudents} lessons={lessons} classLessons={classLessons} classes={myClasses} teachers={teachers} isAdmin={isAdmin} notes={myNotes} onAddNote={addNote} onUpdateNote={updateNote} onDeleteNote={deleteNote}/>,
     reports:  <ReportsPage  user={currentUser} students={isAdmin?students:activeStudents} classes={myClasses} lessons={lessons} classLessons={classLessons} teachers={teachers} isAdmin={isAdmin}/>,
-    archive:  isAdmin?<ArchivePage students={archivedStudents} teachers={teachers} lessons={lessons} onRestore={restoreStudent}/>:null,
+    report_s: <StudentReportPage user={currentUser} students={myStudents.filter(s=>s.active&&!s.deleted)} lessons={lessons} isAdmin={isAdmin}/>,
+    archive:  isAdmin?<ArchivePage students={archivedStudents} teachers={teachers} lessons={lessons} onRestore={restoreStudent} onTrash={trashStudent}/>:null,
+    trash:    isAdmin?<TrashPage students={trashedStudents} onRestore={restoreFromTrash} onDeleteForever={deleteForever}/>:null,
     admin:    isAdmin?<AdminPage   teachers={teachers} students={students} lessons={lessons} classLessons={classLessons} onAddTeacher={addTeacher} onDeleteTeacher={delTeacher} onUpdateTeacher={updateTeacher} onReassignStudent={reassignStudent}/>:null,
   };
 
@@ -273,11 +308,25 @@ export default function App() {
           setCurrentUser(null); setPage("login");
           setStudents([]); setLessons([]); setClasses([]); setClassLessons([]); setNotes([]);
         }}
-        archivedCount={isAdmin?archivedStudents.length:0} alertCount={alertCount}
+        archivedCount={isAdmin?archivedStudents.length:0} trashedCount={isAdmin?trashedStudents.length:0} alertCount={alertCount} onProfile={()=>setProfileModal(true)}
       />
       <main style={S.main}><div className="page-anim" key={safePage}>{pages[safePage]||pages.home}</div></main>
     </div>
+    {profileModal&&<ProfileModal user={currentUser} onSave={async(pw)=>{try{await db.upsertTeacher({id:currentUser.id,password:pw});showToast("Password aggiornata");}catch(e){showToast("Errore","err");}setProfileModal(false);}} onClose={()=>setProfileModal(false)}/>}
   );
+}
+
+function ProfileModal({user,onSave,onClose}) {
+  const [pw,setPw]=useState("");const [pw2,setPw2]=useState("");const [err,setErr]=useState("");
+  const save=()=>{if(pw.length<4){setErr("Minimo 4 caratteri");return;}if(pw!==pw2){setErr("Le password non coincidono");return;}onSave(pw);};
+  return (<Overlay onClose={onClose}><h2 style={S.modalTitle}>👤 Il tuo profilo</h2>
+    <div style={{background:"#f0fdf4",borderRadius:10,padding:"12px 16px",marginBottom:16,fontSize:14}}><strong>{user.name}</strong><br/><span style={{color:"#6b7280"}}>{user.email}</span></div>
+    <div style={{fontWeight:700,fontSize:14,marginBottom:12,color:"#374151"}}>🔒 Cambia password</div>
+    {err&&<div style={S.error}>{err}</div>}
+    <div style={S.field}><label style={S.label}>Nuova password</label><input type="password" style={S.input} value={pw} onChange={e=>{setPw(e.target.value);setErr("");}}/></div>
+    <div style={S.field}><label style={S.label}>Conferma password</label><input type="password" style={S.input} value={pw2} onChange={e=>{setPw2(e.target.value);setErr("");}}/></div>
+    <div style={S.modalActions}><button style={S.btnSecondary} onClick={onClose}>Annulla</button><button style={{...S.btnPrimary,width:"auto"}} disabled={!pw} onClick={save}>Aggiorna Password</button></div>
+  </Overlay>);
 }
 
 // ── TOAST ─────────────────────────────────────────────────────────
@@ -321,12 +370,12 @@ function LoginScreen({teachers,onLogin}) {
 }
 
 // ── SIDEBAR — identica all'originale ─────────────────────────────
-function Sidebar({user,page,setPage,isAdmin,onLogout,archivedCount,alertCount}) {
-  const items=[{id:"home",icon:"🏠",label:"Dashboard"},{id:"students",icon:"👤",label:"Studenti & Classi"},{id:"lessons",icon:"📚",label:"Lezioni Individuali"},{id:"classes",icon:"👥",label:"Lezioni di Classe"},{id:"calendar",icon:"📅",label:"Calendario"},{id:"reports",icon:"📊",label:"Report",badge:alertCount>0?`⚠️ ${alertCount}`:null,warn:true},...(isAdmin?[{id:"archive",icon:"🗄️",label:"Archivio",badge:archivedCount>0?archivedCount:null},{id:"admin",icon:"⚙️",label:"Amministrazione"}]:[])];
+function Sidebar({user,page,setPage,isAdmin,onLogout,onProfile,archivedCount,trashedCount,alertCount}) {
+  const items=[{id:"home",icon:"🏠",label:"Dashboard"},{id:"students",icon:"👤",label:"Studenti & Classi"},{id:"lessons",icon:"📚",label:"Lezioni Individuali"},{id:"classes",icon:"👥",label:"Lezioni di Classe"},{id:"calendar",icon:"📅",label:"Calendario"},{id:"reports",icon:"📊",label:"Report",badge:alertCount>0?`⚠️ ${alertCount}`:null,warn:true},{id:"report_s",icon:"📋",label:"Report Studenti"},...(isAdmin?[{id:"archive",icon:"🗄️",label:"Archivio",badge:archivedCount>0?archivedCount:null},{id:"trash",icon:"🗑️",label:"Cestino",badge:trashedCount>0?trashedCount:null},{id:"admin",icon:"⚙️",label:"Amministrazione"}]:[])];
   return (<aside style={S.sidebar}>
     <div style={S.sidebarTop}><div style={S.sidebarLogo}>🎓</div><div><div style={S.sidebarBrand}>English School</div><div style={{color:"#475569",fontSize:10}}>Registro</div></div></div>
     <nav style={S.nav}>{items.map(item=>(<button key={item.id} className="nav-item" style={{...S.navItem,...(page===item.id?S.navItemActive:{})}} onClick={()=>setPage(item.id)}><span style={S.navIcon}>{item.icon}</span><span style={{flex:1}}>{item.label}</span>{item.badge&&<span style={{...S.badge,...(item.warn?{background:"#ef444420",color:"#ef4444"}:{})}}>{item.badge}</span>}</button>))}</nav>
-    <div style={S.sidebarBottom}><div style={S.userChip}><div style={S.avatar}>{user.name[0]}</div><div><div style={S.userName}>{user.name}</div><div style={S.userRole}>{user.role==="admin"?"Amministratore":"Insegnante"}</div></div></div><button style={S.logoutBtn} onClick={onLogout}>Esci →</button></div>
+    <div style={S.sidebarBottom}><div style={{...S.userChip,cursor:"pointer"}} onClick={onProfile}><div style={S.avatar}>{user.name[0]}</div><div><div style={S.userName}>{user.name}</div><div style={S.userRole}>{user.role==="admin"?"Amministratore":"Insegnante"}</div></div></div><button style={{...S.logoutBtn,marginBottom:4}} onClick={onProfile}>👤 Profilo</button><button style={S.logoutBtn} onClick={onLogout}>Esci →</button></div>
   </aside>);
 }
 
@@ -389,8 +438,8 @@ function HomePage({user,students,lessons,classLessons,classes,teachers,setPage,i
 }
 
 // ── STUDENTI & CLASSI — identica all'originale ────────────────────
-function StudentsPage({user,students,classes,teachers,lessons,classLessons,isAdmin,onAdd,onUpdate,onArchive}) {
-  const [tab,setTab]=useState("students");const [search,setSearch]=useState("");const [detailStudent,setDS]=useState(null);const [detailClass,setDC]=useState(null);const [editModal,setEdit]=useState(null);const [confirm,setConfirm]=useState(null);
+function StudentsPage({user,students,classes,teachers,lessons,classLessons,isAdmin,onAdd,onUpdate,onArchive,onTrash}) {
+  const [tab,setTab]=useState("students");const [search,setSearch]=useState("");const [detailStudent,setDS]=useState(null);const [detailClass,setDC]=useState(null);const [editModal,setEdit]=useState(null);const [confirm,setConfirm]=useState(null);const [confirmTrash,setConfirmTrash]=useState(null);
   const fS=students.filter(s=>s.name.toLowerCase().includes(search.toLowerCase())||String(s.level).includes(search));
   const fC=classes.filter(c=>c.name.toLowerCase().includes(search.toLowerCase()));
   return (<div style={S.page}>
@@ -406,13 +455,13 @@ function StudentsPage({user,students,classes,teachers,lessons,classLessons,isAdm
         <div style={{marginBottom:12}}><div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}><span style={{color:"#6b7280"}}>Pacchetto</span><span style={{fontWeight:700,color:pkgColor(student)}}>{student.package_used}/{student.package_total} · <span style={{color:rem<=3?"#ef4444":"#10b981"}}>{rem} rimaste</span></span></div><div style={{height:6,background:"#f1f5f9",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:`${Math.min(100,(student.package_used/student.package_total)*100)}%`,background:pkgColor(student),borderRadius:3}}/></div></div>
         <div style={S.cardStats}><div style={S.miniStat}><span style={S.miniStatVal}>{sl.length}</span><span style={S.miniStatLbl}>lezioni</span></div><div style={S.miniStat}><span style={S.miniStatVal}>{lastL?fmtDate(lastL.date):"—"}</span><span style={S.miniStatLbl}>ultima</span></div><div style={S.miniStat}><span style={S.miniStatVal}>{lastL?.time||"—"}</span><span style={S.miniStatLbl}>orario</span></div></div>
         {student.notes&&<div style={S.cardNotes}>📝 {student.notes}</div>}
-        <div style={S.cardActions}><button style={S.btnSm} onClick={()=>setDS(student)}>Scheda</button>{isAdmin&&<button style={S.btnSm} onClick={()=>setEdit(student)}>Modifica</button>}{isAdmin&&<button style={{...S.btnSm,...S.btnDanger}} onClick={()=>setConfirm(student.id)}>Archivia</button>}</div>
+        <div style={S.cardActions}><button style={S.btnSm} onClick={()=>setDS(student)}>Scheda</button>{isAdmin&&<button style={S.btnSm} onClick={()=>setEdit(student)}>Modifica</button>}{isAdmin&&<button style={{...S.btnSm,...S.btnDanger}} onClick={()=>setConfirm(student.id)}>Archivia</button>}{isAdmin&&<button style={{...S.btnSm,background:"#fee2e220",color:"#dc2626",border:"1px solid #fca5a5"}} onClick={()=>setConfirmTrash(student.id)}>🗑️ Cestino</button>}</div>
       </div>);
     })}</div>))}
     {tab==="classes"&&(fC.length===0?<Empty text="Nessuna classe trovata"/>:(<div style={S.cardGrid}>{fC.map(cls=>{
       const clsS=students.filter(s=>(cls.student_ids||[]).includes(s.id));const clsL=classLessons.filter(l=>l.class_id===cls.id);const lastL=[...clsL].sort((a,b)=>b.date.localeCompare(a.date))[0];const teacher=teachers.find(t=>t.id===cls.teacher_id);const rem=pkgRemaining(cls);
       return(<div key={cls.id} style={{...S.studentCard,borderTop:`3px solid ${pkgColor(cls)}`}}>
-        <div style={S.cardTop}><div style={{...S.studentAvatar,background:"#f59e0b20",color:"#f59e0b",fontSize:20}}>👥</div><div style={{flex:1}}><div style={S.studentName}>{cls.name}</div><div style={S.studentMeta}>{teacher?.name||"—"} · {cls.schedule}</div></div></div>
+        <div style={S.cardTop}><div style={{...S.studentAvatar,background:"#f59e0b20",color:"#f59e0b",fontSize:20}}>👥</div><div style={{flex:1}}><div style={S.studentName}>{cls.name}</div><div style={S.studentMeta}>{teacher?.name||"—"} · {cls.schedule}{cls.company&&<span style={{marginLeft:6,background:"#e0f2fe",color:"#0369a1",borderRadius:6,padding:"1px 6px",fontSize:11}}>🏢 {cls.company}</span>}</div></div></div>
         <div style={{marginBottom:12}}><div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}><span style={{color:"#6b7280"}}>Pacchetto</span><span style={{fontWeight:700,color:pkgColor(cls)}}>{cls.package_used}/{cls.package_total} · <span style={{color:rem<=3?"#ef4444":"#10b981"}}>{rem} rimaste</span></span></div><div style={{height:6,background:"#f1f5f9",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:`${Math.min(100,(cls.package_used/cls.package_total)*100)}%`,background:pkgColor(cls),borderRadius:3}}/></div></div>
         <div style={S.cardStats}><div style={S.miniStat}><span style={S.miniStatVal}>{clsS.length}</span><span style={S.miniStatLbl}>studenti</span></div><div style={S.miniStat}><span style={S.miniStatVal}>{clsL.length}/{cls.package_total}</span><span style={S.miniStatLbl}>lezioni</span></div><div style={S.miniStat}><span style={S.miniStatVal}>{lastL?fmtDate(lastL.date):"—"}</span><span style={S.miniStatLbl}>ultima</span></div></div>
         <div style={{marginBottom:10,display:"flex",flexWrap:"wrap",gap:4}}>{clsS.map(s=><span key={s.id} style={{fontSize:11,background:"#f1f5f9",borderRadius:6,padding:"2px 8px"}}>{s.name.split(" ")[0]}</span>)}</div>
@@ -421,19 +470,22 @@ function StudentsPage({user,students,classes,teachers,lessons,classLessons,isAdm
     })}</div>))}
     {editModal&&isAdmin&&<StudentModal user={user} teachers={teachers} student={editModal==="add"?null:editModal} onSave={s=>{editModal==="add"?onAdd(s):onUpdate(s);setEdit(null);}} onClose={()=>setEdit(null)}/>}
     {confirm&&<ConfirmModal title="Archivia studente" text="Verrà spostato nell'archivio." onConfirm={()=>{onArchive(confirm);setConfirm(null);}} onClose={()=>setConfirm(null)}/>}
+    {confirmTrash&&<ConfirmModal title="Elimina studente" text="Lo studente andrà nel cestino. Potrai recuperarlo o eliminarlo definitivamente." onConfirm={()=>{onTrash(confirmTrash);setConfirmTrash(null);}} onClose={()=>setConfirmTrash(null)}/>}
     {detailStudent&&<StudentDetailModal student={detailStudent} lessons={lessons.filter(l=>l.student_id===detailStudent.id)} onClose={()=>setDS(null)}/>}
     {detailClass&&<ClassDetailModal cls={detailClass} students={students.filter(s=>(detailClass.student_ids||[]).includes(s.id))} classLessons={classLessons.filter(l=>l.class_id===detailClass.id)} onClose={()=>setDC(null)}/>}
   </div>);
 }
 
 function StudentModal({user,teachers,student,onSave,onClose}) {
-  const [form,setForm]=useState(student||{name:"",level:1,teacher_id:user.role==="admin"?"":user.id,phone:"",email:"",notes:"",package_total:10,package_used:0});
+  const [form,setForm]=useState(student||{name:"",level:1,teacher_id:user.role==="admin"?"":user.id,phone:"",email:"",company:"",notes:"",package_total:10,package_used:0,is_class_student:false});
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   return (<Overlay onClose={onClose}>
     <h2 style={S.modalTitle}>{student?"Modifica Studente":"Nuovo Studente"}</h2>
     <div style={S.field}><label style={S.label}>Nome completo *</label><input style={S.input} value={form.name} onChange={e=>set("name",e.target.value)} placeholder="Es. Mario Rossi"/></div>
     <div style={S.fieldRow}><div style={S.field}><label style={S.label}>Livello (1–50)</label><select style={S.input} value={form.level} onChange={e=>set("level",Number(e.target.value))}>{LEVELS.map(l=><option key={l} value={l}>Livello {l}</option>)}</select></div><div style={S.field}><label style={S.label}>Telefono</label><input style={S.input} value={form.phone||""} onChange={e=>set("phone",e.target.value)} placeholder="333-0000000"/></div></div>
     <div style={S.field}><label style={S.label}>Email</label><input style={S.input} type="email" value={form.email||""} onChange={e=>set("email",e.target.value)} placeholder="studente@email.it"/></div>
+    <div style={S.field}><label style={S.label}>Azienda</label><input style={S.input} value={form.company||""} onChange={e=>set("company",e.target.value)} placeholder="Es. Acme Srl (opzionale)"/></div>
+    {user.role==="admin"&&<div style={{background:"#f0f9ff",borderRadius:10,padding:"10px 14px",marginBottom:14}}><label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:13,fontWeight:600,color:"#0369a1"}}><input type="checkbox" checked={form.is_class_student||false} onChange={e=>set("is_class_student",e.target.checked)}/> 👥 Studente di classe aziendale (non compare nelle lezioni individuali)</label></div>}
     <div style={S.fieldRow}><div style={S.field}><label style={S.label}>Lezioni pacchetto</label><input type="number" min="1" style={S.input} value={form.package_total||10} onChange={e=>set("package_total",Number(e.target.value))}/></div><div style={S.field}><label style={S.label}>Già usate</label><input type="number" min="0" style={S.input} value={form.package_used||0} onChange={e=>set("package_used",Number(e.target.value))}/></div></div>
     {user.role==="admin"&&<div style={S.field}><label style={S.label}>Insegnante</label><select style={S.input} value={form.teacher_id||""} onChange={e=>set("teacher_id",e.target.value)}><option value="">— Seleziona —</option>{teachers.filter(t=>t.role==="teacher").map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></div>}
     <div style={S.field}><label style={S.label}>Note</label><textarea style={{...S.input,height:72,resize:"vertical"}} value={form.notes||""} onChange={e=>set("notes",e.target.value)}/></div>
@@ -445,7 +497,7 @@ function StudentDetailModal({student,lessons,onClose}) {
   const sorted=[...lessons].sort((a,b)=>a.date.localeCompare(b.date));
   return (<Overlay onClose={onClose} wide>
     <h2 style={S.modalTitle}>Scheda: {student.name}</h2>
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>{[["Livello",`Livello ${student.level}`],["Telefono",student.phone||"—"],["Email",student.email||"—"],["Note",student.notes||"—"]].map(([k,v])=>(<div key={k} style={{background:"#f9fafb",borderRadius:8,padding:"10px 14px"}}><div style={{fontSize:11,color:"#9ca3af",marginBottom:2}}>{k}</div><div style={{fontSize:13,fontWeight:600,wordBreak:"break-all"}}>{v}</div></div>))}</div>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>{[["Livello",`Livello ${student.level}`],["Telefono",student.phone||"—"],["Email",student.email||"—"],["Azienda",student.company||"—"],["Note",student.notes||"—"]].map(([k,v])=>(<div key={k} style={{background:"#f9fafb",borderRadius:8,padding:"10px 14px"}}><div style={{fontSize:11,color:"#9ca3af",marginBottom:2}}>{k}</div><div style={{fontSize:13,fontWeight:600,wordBreak:"break-all"}}>{v}</div></div>))}</div>
     <div style={{background:"#f0fdf4",borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:13,color:"#166534"}}>📦 <strong>{student.package_used}/{student.package_total}</strong> lezioni · <strong style={{color:pkgRemaining(student)<=3?"#ef4444":"#10b981"}}>{pkgRemaining(student)} rimaste</strong></div>
     <div style={{...S.tableWrap,maxHeight:280,overflowY:"auto"}}><table style={S.table}><thead><tr><th style={S.th}>N°</th><th style={S.th}>Data</th><th style={S.th}>Ora</th><th style={S.th}>Argomento</th><th style={S.th}>Compiti</th><th style={S.th}>Modalità</th><th style={S.th}>Presenza</th></tr></thead>
       <tbody>{sorted.map((l,i)=><tr key={l.id} style={S.tr}><td style={{...S.td,fontWeight:700,color:"#6366f1"}}>{i+1}/{student.package_total}</td><td style={S.td}>{fmtDate(l.date)}</td><td style={S.td}><span style={S.timeBadge}>{l.time}</span></td><td style={S.td}>{l.topic}</td><td style={{...S.td,fontSize:12,color:"#6b7280"}}>{l.homework||"—"}</td><td style={S.td}><ModeBadge mode={l.mode} zoom={l.zoom_account}/></td><td style={S.td}><Pill ok={l.present}/></td></tr>)}</tbody>
@@ -476,56 +528,72 @@ function ModeFields({form,set}) {
 }
 
 // ── LEZIONI INDIVIDUALI — identica all'originale ──────────────────
-function LessonsPage({user,students,lessons,onAdd,onUpdate,onDelete}) {
-  const [modal,setModal]=useState(null);const [fS,setFS]=useState("");const [fM,setFM]=useState("");const [confirm,setConfirm]=useState(null);
-  const myL=user.role==="admin"?lessons:lessons.filter(l=>l.teacher_id===user.id);
-  const filtered=myL.filter(l=>(!fS||l.student_id===fS)&&(!fM||l.date.startsWith(fM)));
+function LessonsPage({user,students,lessons,teachers,isAdmin,onAdd,onAddRecurring,onUpdate,onDelete}) {
+  const [modal,setModal]=useState(null);const [fS,setFS]=useState("");const [fM,setFM]=useState("");const [fY,setFY]=useState("");const [fD,setFD]=useState("");const [fT,setFT]=useState("");const [confirm,setConfirm]=useState(null);
+  const myL=isAdmin?lessons:lessons.filter(l=>l.teacher_id===user.id);
+  const filtered=myL.filter(l=>(!fS||l.student_id===fS)&&(!fT||l.teacher_id===fT)&&(!fY||l.date.startsWith(fY))&&(!fM||l.date.slice(0,7)===fM)&&(!fD||l.date===fD));
   const sorted=[...filtered].sort((a,b)=>b.date.localeCompare(a.date)||(b.time||"").localeCompare(a.time||""));
+  const years=[...new Set(myL.map(l=>l.date.slice(0,4)))].sort().reverse();
   const months=[...new Set(myL.map(l=>l.date.slice(0,7)))].sort().reverse();
   const lIdx=l=>{const all=lessons.filter(x=>x.student_id===l.student_id).sort((a,b)=>a.date.localeCompare(b.date));return all.findIndex(x=>x.id===l.id)+1;};
   return (<div style={S.page}>
     <div style={S.pageHeader}><div><h1 style={S.pageTitle}>Lezioni Individuali</h1><p style={S.pageSub}>{myL.length} lezioni registrate</p></div><button style={{...S.btnPrimary,width:"auto"}} onClick={()=>setModal("add")}>+ Nuova Lezione</button></div>
-    <div style={{display:"flex",gap:12,marginBottom:20,flexWrap:"wrap"}}>
-      <select style={{...S.input,width:"auto",minWidth:180}} value={fS} onChange={e=>setFS(e.target.value)}><option value="">Tutti gli studenti</option>{students.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>
-      <select style={{...S.input,width:"auto",minWidth:150}} value={fM} onChange={e=>setFM(e.target.value)}><option value="">Tutti i mesi</option>{months.map(m=><option key={m} value={m}>{new Date(m+"-01").toLocaleDateString("it-IT",{month:"long",year:"numeric"})}</option>)}</select>
+    <div style={{display:"flex",gap:10,marginBottom:20,flexWrap:"wrap",alignItems:"center"}}>
+      <select style={{...S.input,width:"auto",minWidth:170}} value={fS} onChange={e=>setFS(e.target.value)}><option value="">Tutti gli studenti</option>{students.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>
+      {isAdmin&&<select style={{...S.input,width:"auto",minWidth:160}} value={fT} onChange={e=>setFT(e.target.value)}><option value="">Tutti gli insegnanti</option>{teachers.filter(t=>t.role==="teacher").map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select>}
+      <select style={{...S.input,width:"auto",minWidth:100}} value={fY} onChange={e=>{setFY(e.target.value);setFM("");setFD("");}}><option value="">Anno</option>{years.map(y=><option key={y} value={y}>{y}</option>)}</select>
+      <select style={{...S.input,width:"auto",minWidth:150}} value={fM} onChange={e=>{setFM(e.target.value);setFD("");}}><option value="">Mese</option>{months.filter(m=>!fY||m.startsWith(fY)).map(m=><option key={m} value={m}>{new Date(m+"-01").toLocaleDateString("it-IT",{month:"long",year:"numeric"})}</option>)}</select>
+      <div style={{display:"flex",alignItems:"center",gap:6}}><label style={{fontSize:13,color:"#6b7280"}}>Giorno:</label><input type="date" style={{...S.input,width:"auto"}} value={fD} onChange={e=>setFD(e.target.value)}/></div>
+      {(fS||fT||fY||fM||fD)&&<button style={{...S.btnSecondary,padding:"8px 14px",fontSize:12}} onClick={()=>{setFS("");setFT("");setFY("");setFM("");setFD("");}}>✕ Rimuovi filtri</button>}
     </div>
     {sorted.length===0?<Empty text="Nessuna lezione trovata"/>:(<div style={S.tableWrap}><table style={S.table}>
       <thead><tr><th style={S.th}>N°</th><th style={S.th}>Data</th><th style={S.th}>Ora</th><th style={S.th}>Min</th><th style={S.th}>Studente</th><th style={S.th}>Argomento</th><th style={S.th}>Compiti</th><th style={S.th}>Modalità</th><th style={S.th}>Presenza</th><th style={S.th}></th></tr></thead>
       <tbody>{sorted.map(l=>{const st=students.find(s=>s.id===l.student_id);if(!st)return null;return(<tr key={l.id} style={S.tr}><td style={S.td}><LessonCounter current={lIdx(l)} total={st.package_total||0}/></td><td style={S.td}>{fmtDate(l.date)}</td><td style={S.td}><span style={S.timeBadge}>{l.time||"—"}</span></td><td style={S.td}><span style={{fontSize:12,color:"#6b7280"}}>{l.duration}m</span></td><td style={S.td}><strong>{st.name}</strong></td><td style={{...S.td,maxWidth:150,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.topic}</td><td style={{...S.td,maxWidth:120,color:"#6b7280",fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.homework||"—"}</td><td style={S.td}><ModeBadge mode={l.mode} zoom={l.zoom_account}/></td><td style={S.td}><Pill ok={l.present}/></td><td style={S.td}><div style={{display:"flex",gap:4}}><button style={S.iconBtn} onClick={()=>setModal(l)}>✏️</button><button style={S.iconBtn} onClick={()=>setConfirm({id:l.id,sid:l.student_id})}>🗑️</button></div></td></tr>);})}</tbody>
     </table></div>)}
-    {modal&&<LessonModal user={user} students={students} lesson={modal==="add"?null:modal} onSave={l=>{modal==="add"?onAdd(l):onUpdate(l);setModal(null);}} onClose={()=>setModal(null)}/>}
+    {modal&&<LessonModal user={user} students={students} lesson={modal==="add"?null:modal} onSave={l=>{modal==="add"?onAdd(l):onUpdate(l);setModal(null);}} onSaveRecurring={(l,n)=>{onAddRecurring(l,n);setModal(null);}} onClose={()=>setModal(null)}/>}
     {confirm&&<ConfirmModal title="Elimina lezione" text="Operazione irreversibile." onConfirm={()=>{onDelete(confirm.id,confirm.sid);setConfirm(null);}} onClose={()=>setConfirm(null)}/>}
   </div>);
 }
 
-function LessonModal({user,students,lesson,onSave,onClose}) {
+function LessonModal({user,students,lesson,onSave,onSaveRecurring,onClose}) {
   const [form,setForm]=useState(lesson||{student_id:"",date:today(),time:"09:00",duration:60,present:true,topic:"",homework:"",mode:"presenza",zoom_account:""});
+  const [recurring,setRecurring]=useState(false);const [recTimes,setRecTimes]=useState(4);
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   return (<Overlay onClose={onClose}>
     <h2 style={S.modalTitle}>{lesson?"Modifica Lezione":"Nuova Lezione"}</h2>
     <div style={S.field}><label style={S.label}>Studente *</label><select style={S.input} value={form.student_id} onChange={e=>set("student_id",e.target.value)}><option value="">— Seleziona —</option>{students.map(s=><option key={s.id} value={s.id}>{s.name} (Liv. {s.level})</option>)}</select></div>
     <div style={S.fieldRow}><div style={S.field}><label style={S.label}>Data *</label><input type="date" style={S.input} value={form.date} onChange={e=>set("date",e.target.value)}/></div><div style={S.field}><label style={S.label}>Orario *</label><input type="time" style={S.input} value={form.time||""} onChange={e=>set("time",e.target.value)}/></div><div style={S.field}><label style={S.label}>Durata</label><select style={S.input} value={form.duration||60} onChange={e=>set("duration",Number(e.target.value))}>{DURATIONS.map(d=><option key={d} value={d}>{d} min</option>)}</select></div></div>
-    <div style={S.field}><label style={S.label}>Argomento trattato *</label><input style={S.input} value={form.topic} onChange={e=>set("topic",e.target.value)} placeholder="Es. Present Perfect…"/></div>
+    <div style={S.field}><label style={S.label}>Argomento trattato</label><input style={S.input} value={form.topic||""} onChange={e=>set("topic",e.target.value)} placeholder="Es. Present Perfect… (opzionale)"/></div>
     <div style={S.field}><label style={S.label}>Compiti assegnati</label><input style={S.input} value={form.homework||""} onChange={e=>set("homework",e.target.value)} placeholder="Es. Ex. 3-5 pag. 28…"/></div>
     <div style={{background:"#f8fafc",borderRadius:12,padding:"14px 16px",marginBottom:14}}>
       <div style={{fontWeight:600,fontSize:13,marginBottom:10}}>✅ Presenza studente</div>
       <div style={{display:"flex",gap:10}}>{[true,false].map(v=>(<label key={String(v)} style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:8,cursor:"pointer",padding:"9px",borderRadius:10,border:`2px solid ${form.present===v?(v?"#10b981":"#ef4444"):"#e2e8f0"}`,background:form.present===v?(v?"#f0fdf4":"#fff0f0"):"white",fontWeight:600,fontSize:13,color:form.present===v?(v?"#065f46":"#991b1b"):"#6b7280"}}><input type="radio" checked={form.present===v} onChange={()=>set("present",v)} style={{display:"none"}}/>{v?"✅ Presente":"❌ Assente"}</label>))}</div>
     </div>
     <ModeFields form={form} set={set}/>
-    <div style={S.modalActions}><button style={S.btnSecondary} onClick={onClose}>Annulla</button><button style={{...S.btnPrimary,width:"auto"}} disabled={!form.student_id||!form.topic} onClick={()=>onSave(form)}>{lesson?"Salva Modifiche":"Registra Lezione"}</button></div>
+    {!lesson&&<div style={{background:"#f0f9ff",borderRadius:12,padding:"14px 16px",marginBottom:14}}><label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontWeight:600,fontSize:13,color:"#0369a1"}}><input type="checkbox" checked={recurring} onChange={e=>setRecurring(e.target.checked)}/> 🔁 Ripeti lezione</label>{recurring&&<div style={{marginTop:10,display:"flex",alignItems:"center",gap:10}}><label style={S.label}>Numero ripetizioni</label><select style={{...S.input,width:"auto"}} value={recTimes} onChange={e=>setRecTimes(Number(e.target.value))}>{[2,3,4,5,6,7,8,10,12].map(n=><option key={n} value={n}>{n} settimane</option>)}</select><span style={{fontSize:12,color:"#6b7280"}}>stessa ora, ogni settimana</span></div>}</div>}
+    <div style={S.modalActions}><button style={S.btnSecondary} onClick={onClose}>Annulla</button><button style={{...S.btnPrimary,width:"auto"}} disabled={!form.student_id} onClick={()=>{if(recurring&&!lesson)onSaveRecurring(form,recTimes);else onSave(form);}}>{lesson?"Salva Modifiche":recurring?"Registra "+recTimes+" lezioni":"Registra Lezione"}</button></div>
   </Overlay>);
 }
 
 // ── LEZIONI DI CLASSE — identica all'originale ────────────────────
 function ClassesPage({user,students,classes,classLessons,teachers,isAdmin,onAddClass,onUpdateClass,onDeleteClass,onAddClassLesson,onUpdateClassLesson,onDeleteClassLesson}) {
   const [sel,setSel]=useState(null);const [classModal,setCM]=useState(null);const [lessonModal,setLM]=useState(null);const [confirm,setConfirm]=useState(null);
+  const [fCompany,setFCompany]=useState("");const [fTeacher,setFTeacher]=useState("");const [fClass,setFClass]=useState("");
   const activeClass=sel?classes.find(c=>c.id===sel):null;
+  const companies=[...new Set(classes.map(c=>c.company).filter(Boolean))];
+  const visibleClasses=classes.filter(c=>(!fCompany||c.company===fCompany)&&(!fTeacher||c.teacher_id===fTeacher)&&(!fClass||c.id===fClass));
   const classStudents=activeClass?students.filter(s=>(activeClass.student_ids||[]).includes(s.id)):[];
   const thisLessons=activeClass?[...classLessons.filter(l=>l.class_id===activeClass.id)].sort((a,b)=>a.date.localeCompare(b.date)):[];
   return (<div style={S.page}>
     {!sel?(<>
       <div style={S.pageHeader}><div><h1 style={S.pageTitle}>Lezioni di Classe</h1><p style={S.pageSub}>{classes.length} classi</p></div>{isAdmin&&<button style={{...S.btnPrimary,width:"auto"}} onClick={()=>setCM("add")}>+ Nuova Classe</button>}</div>
-      {classes.length===0?<Empty text="Nessuna classe"/>:(<div style={S.cardGrid}>{classes.map(cls=>{
+      <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
+        {companies.length>0&&<select style={{...S.input,width:"auto",minWidth:160}} value={fCompany} onChange={e=>setFCompany(e.target.value)}><option value="">Tutte le aziende</option>{companies.map(co=><option key={co} value={co}>{co}</option>)}</select>}
+        {isAdmin&&<select style={{...S.input,width:"auto",minWidth:160}} value={fTeacher} onChange={e=>setFTeacher(e.target.value)}><option value="">Tutti gli insegnanti</option>{teachers.filter(t=>t.role==="teacher").map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select>}
+        <select style={{...S.input,width:"auto",minWidth:160}} value={fClass} onChange={e=>setFClass(e.target.value)}><option value="">Tutte le classi</option>{classes.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select>
+        {(fCompany||fTeacher||fClass)&&<button style={{...S.btnSecondary,padding:"8px 14px",fontSize:12}} onClick={()=>{setFCompany("");setFTeacher("");setFClass("");}}>✕ Rimuovi filtri</button>}
+      </div>
+      {classes.length===0?<Empty text="Nessuna classe"/>:(<div style={S.cardGrid}>{visibleClasses.map(cls=>{
         const clsS=students.filter(s=>(cls.student_ids||[]).includes(s.id));const clsL=classLessons.filter(l=>l.class_id===cls.id);const teacher=teachers.find(t=>t.id===cls.teacher_id);const rem=pkgRemaining(cls);
         return(<div key={cls.id} style={{...S.studentCard,borderTop:`3px solid ${pkgColor(cls)}`,cursor:"pointer"}} onClick={()=>setSel(cls.id)}>
           <div style={S.cardTop}><div style={{...S.studentAvatar,background:"#f59e0b20",color:"#f59e0b",fontSize:20}}>👥</div><div style={{flex:1}}><div style={S.studentName}>{cls.name}</div><div style={S.studentMeta}>{teacher?.name||"—"} · {cls.schedule}</div></div></div>
@@ -576,13 +644,14 @@ function ClassesPage({user,students,classes,classLessons,teachers,isAdmin,onAddC
 }
 
 function ClassModal({user,students,teachers,cls,onSave,onClose}) {
-  const [form,setForm]=useState(cls||{name:"",teacher_id:user.role==="admin"?"":user.id,student_ids:[],schedule:"",package_total:20,package_used:0});
+  const [form,setForm]=useState(cls||{name:"",teacher_id:user.role==="admin"?"":user.id,student_ids:[],schedule:"",company:"",package_total:20,package_used:0});
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   const toggle=id=>setForm(f=>({...f,student_ids:f.student_ids.includes(id)?f.student_ids.filter(x=>x!==id):[...f.student_ids,id]}));
-  const avail=form.teacher_id?students.filter(s=>s.teacher_id===form.teacher_id):students;
+  const avail=students.filter(s=>s.is_class_student);
   return (<Overlay onClose={onClose} wide>
     <h2 style={S.modalTitle}>{cls?"Modifica Classe":"Nuova Classe"}</h2>
-    <div style={S.fieldRow}><div style={S.field}><label style={S.label}>Nome classe *</label><input style={S.input} value={form.name} onChange={e=>set("name",e.target.value)} placeholder="Es. Gruppo A1 Mattino"/></div><div style={S.field}><label style={S.label}>Orario ricorrente</label><input style={S.input} value={form.schedule||""} onChange={e=>set("schedule",e.target.value)} placeholder="Es. Lunedì 09:00"/></div></div>
+    <div style={S.fieldRow}><div style={S.field}><label style={S.label}>Nome classe *</label><input style={S.input} value={form.name} onChange={e=>set("name",e.target.value)} placeholder="Es. Gruppo A1 Mattino"/></div><div style={S.field}><label style={S.label}>Azienda</label><input style={S.input} value={form.company||""} onChange={e=>set("company",e.target.value)} placeholder="Es. Acme Srl"/></div></div>
+    <div style={S.field}><label style={S.label}>Orario ricorrente</label><input style={S.input} value={form.schedule||""} onChange={e=>set("schedule",e.target.value)} placeholder="Es. Lunedì 09:00"/></div>
     <div style={S.fieldRow}><div style={S.field}><label style={S.label}>Lezioni pacchetto</label><input type="number" min="1" style={S.input} value={form.package_total||20} onChange={e=>set("package_total",Number(e.target.value))}/></div>{user.role==="admin"&&<div style={S.field}><label style={S.label}>Insegnante</label><select style={S.input} value={form.teacher_id||""} onChange={e=>set("teacher_id",e.target.value)}><option value="">— Seleziona —</option>{teachers.filter(t=>t.role==="teacher").map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></div>}</div>
     <div style={S.field}><label style={S.label}>Studenti della classe</label><div style={{display:"flex",flexWrap:"wrap",gap:8,marginTop:8}}>{avail.map(s=>(<label key={s.id} style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",background:form.student_ids.includes(s.id)?"#6366f115":"#f8fafc",border:`1.5px solid ${form.student_ids.includes(s.id)?"#6366f1":"#e2e8f0"}`,borderRadius:8,padding:"6px 12px",fontSize:13}}><input type="checkbox" checked={form.student_ids.includes(s.id)} onChange={()=>toggle(s.id)}/>{s.name} <LevelBadge level={s.level} small/></label>))}</div></div>
     <div style={S.modalActions}><button style={S.btnSecondary} onClick={onClose}>Annulla</button><button style={{...S.btnPrimary,width:"auto"}} disabled={!form.name} onClick={()=>onSave(form)}>{cls?"Salva":"Crea Classe"}</button></div>
@@ -597,14 +666,14 @@ function ClassLessonModal({cls,students,lesson,onSave,onClose}) {
   return (<Overlay onClose={onClose} wide>
     <h2 style={S.modalTitle}>{lesson?"Modifica":"Nuova Lezione"} — {cls.name}</h2>
     <div style={S.fieldRow}><div style={S.field}><label style={S.label}>Data *</label><input type="date" style={S.input} value={form.date} onChange={e=>set("date",e.target.value)}/></div><div style={S.field}><label style={S.label}>Orario *</label><input type="time" style={S.input} value={form.time||""} onChange={e=>set("time",e.target.value)}/></div><div style={S.field}><label style={S.label}>Durata</label><select style={S.input} value={form.duration||90} onChange={e=>set("duration",Number(e.target.value))}>{DURATIONS.map(d=><option key={d} value={d}>{d} min</option>)}</select></div></div>
-    <div style={S.field}><label style={S.label}>Argomento trattato *</label><input style={S.input} value={form.topic} onChange={e=>set("topic",e.target.value)} placeholder="Es. Vocabulary Unit 4…"/></div>
+    <div style={S.field}><label style={S.label}>Argomento trattato</label><input style={S.input} value={form.topic||""} onChange={e=>set("topic",e.target.value)} placeholder="Es. Vocabulary Unit 4… (opzionale)"/></div>
     <div style={S.field}><label style={S.label}>Compiti</label><input style={S.input} value={form.homework||""} onChange={e=>set("homework",e.target.value)}/></div>
     <ModeFields form={form} set={set}/>
     <div style={{background:"#f8fafc",borderRadius:12,padding:"14px 16px",marginBottom:14}}>
       <div style={{fontWeight:600,fontSize:13,marginBottom:10}}>✅ Presenze — {Object.values(form.attendances||{}).filter(Boolean).length}/{students.length} presenti</div>
       <div style={{display:"flex",flexWrap:"wrap",gap:8}}>{students.map(s=>{const p=form.attendances?.[s.id]??true;return<button key={s.id} onClick={()=>toggleAtt(s.id)} style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",background:p?"#d1fae5":"#fee2e2",border:`1.5px solid ${p?"#10b981":"#ef4444"}`,color:p?"#065f46":"#991b1b",borderRadius:8,padding:"7px 14px",fontSize:13,fontWeight:600}}>{p?"✓":"✗"} {s.name.split(" ")[0]}</button>;})}</div>
     </div>
-    <div style={S.modalActions}><button style={S.btnSecondary} onClick={onClose}>Annulla</button><button style={{...S.btnPrimary,width:"auto"}} disabled={!form.topic} onClick={()=>onSave(form)}>{lesson?"Salva":"Registra"}</button></div>
+    <div style={S.modalActions}><button style={S.btnSecondary} onClick={onClose}>Annulla</button><button style={{...S.btnPrimary,width:"auto"}} onClick={()=>onSave(form)}>{lesson?"Salva":"Registra"}</button></div>
   </Overlay>);
 }
 
@@ -741,9 +810,62 @@ function ReportsPage({user,students,classes,lessons,classLessons,teachers,isAdmi
   </div>);
 }
 
+// ── REPORT STUDENTI ──────────────────────────────────────────────
+function StudentReportPage({user,students,lessons,isAdmin}) {
+  const [fStudent,setFStudent]=useState("");const [fYear,setFYear]=useState("");const [fMonth,setFMonth]=useState("");const [viewMode,setVM]=useState("month");
+  const myStudents=isAdmin?students:students.filter(s=>s.teacher_id===user.id);
+  const myLessons=isAdmin?lessons:lessons.filter(l=>l.teacher_id===user.id);
+  const years=[...new Set(myLessons.map(l=>l.date.slice(0,4)))].sort().reverse();
+  const months=[...new Set(myLessons.filter(l=>!fYear||l.date.startsWith(fYear)).map(l=>l.date.slice(0,7)))].sort().reverse();
+  const selStudent=myStudents.find(s=>s.id===fStudent);
+  const filteredLessons=myLessons.filter(l=>
+    (!fStudent||l.student_id===fStudent)&&
+    (!fYear||l.date.startsWith(fYear))&&
+    (!fMonth||l.date.startsWith(fMonth))
+  );
+  const byStudent=myStudents.map(s=>{
+    const sl=filteredLessons.filter(l=>l.student_id===s.id);
+    return{student:s,lessons:sl};
+  }).filter(x=>x.lessons.length>0||(fStudent&&x.student.id===fStudent));
+  return (<div style={S.page}>
+    <div style={S.pageHeader}><div><h1 style={S.pageTitle}>📋 Report Studenti</h1><p style={S.pageSub}>Argomenti trattati per studente</p></div></div>
+    <div style={{display:"flex",gap:10,marginBottom:20,flexWrap:"wrap",alignItems:"center"}}>
+      <select style={{...S.input,width:"auto",minWidth:180}} value={fStudent} onChange={e=>setFStudent(e.target.value)}><option value="">Tutti gli studenti</option>{myStudents.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>
+      <select style={{...S.input,width:"auto",minWidth:100}} value={fYear} onChange={e=>{setFYear(e.target.value);setFMonth("");}}><option value="">Anno</option>{years.map(y=><option key={y} value={y}>{y}</option>)}</select>
+      <select style={{...S.input,width:"auto",minWidth:150}} value={fMonth} onChange={e=>setFMonth(e.target.value)}><option value="">Mese</option>{months.map(m=><option key={m} value={m}>{new Date(m+"-01").toLocaleDateString("it-IT",{month:"long",year:"numeric"})}</option>)}</select>
+      {(fStudent||fYear||fMonth)&&<button style={{...S.btnSecondary,padding:"8px 14px",fontSize:12}} onClick={()=>{setFStudent("");setFYear("");setFMonth("");}}>✕ Rimuovi filtri</button>}
+    </div>
+    {filteredLessons.length===0&&<Empty text="Nessuna lezione trovata con i filtri selezionati"/>}
+    {byStudent.map(({student,lessons:sl})=>(
+      <div key={student.id} style={{...S.card,marginBottom:20}}>
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:14}}>
+          <div style={S.studentAvatar}>{student.name.split(" ").map(n=>n[0]).join("").slice(0,2)}</div>
+          <div><div style={{fontWeight:700,fontSize:16}}>{student.name}</div><div style={{fontSize:12,color:"#6b7280"}}>{student.company&&<>🏢 {student.company} · </>}Livello {student.level} · {sl.length} lezioni</div></div>
+          <div style={{marginLeft:"auto",background:"#f0fdf4",borderRadius:10,padding:"8px 16px",fontSize:13,color:"#166534",fontWeight:600}}>📦 {student.package_used}/{student.package_total} · {pkgRemaining(student)} rimaste</div>
+        </div>
+        <div style={{...S.tableWrap,maxHeight:300,overflowY:"auto"}}>
+          <table style={S.table}><thead><tr><th style={S.th}>N°</th><th style={S.th}>Data</th><th style={S.th}>Ora</th><th style={S.th}>Durata</th><th style={S.th}>Argomento</th><th style={S.th}>Compiti</th><th style={S.th}>Modalità</th><th style={S.th}>Presenza</th></tr></thead>
+          <tbody>{[...sl].sort((a,b)=>a.date.localeCompare(b.date)).map((l,i)=>(
+            <tr key={l.id} style={S.tr}>
+              <td style={{...S.td,fontWeight:700,color:"#6366f1"}}>{i+1}/{student.package_total}</td>
+              <td style={S.td}>{fmtDate(l.date)}</td>
+              <td style={S.td}><span style={S.timeBadge}>{l.time||"—"}</span></td>
+              <td style={S.td}><span style={{fontSize:12,color:"#6b7280"}}>{l.duration}m</span></td>
+              <td style={{...S.td,maxWidth:200}}>{l.topic||<span style={{color:"#9ca3af",fontStyle:"italic"}}>—</span>}</td>
+              <td style={{...S.td,maxWidth:150,fontSize:12,color:"#6b7280"}}>{l.homework||"—"}</td>
+              <td style={S.td}><ModeBadge mode={l.mode}/></td>
+              <td style={S.td}><Pill ok={l.present}/></td>
+            </tr>
+          ))}</tbody></table>
+        </div>
+      </div>
+    ))}
+  </div>);
+}
+
 // ── ARCHIVIO — identico all'originale ────────────────────────────
-function ArchivePage({students,teachers,lessons,onRestore}) {
-  const [restoreModal,setRM]=useState(null);const [selected,setSel]=useState(null);
+function ArchivePage({students,teachers,lessons,onRestore,onTrash}) {
+  const [restoreModal,setRM]=useState(null);const [selected,setSel]=useState(null);const [confirmTrash,setConfirmTrash]=useState(null);
   return (<div style={S.page}>
     <h1 style={S.pageTitle}>Archivio Studenti</h1><p style={S.pageSub}>Solo l'amministratore può accedere a questa sezione.</p>
     {students.length===0?<Empty text="L'archivio è vuoto"/>:(<div style={S.cardGrid}>{students.map(student=>{
@@ -753,11 +875,30 @@ function ArchivePage({students,teachers,lessons,onRestore}) {
         <div style={{marginBottom:10,fontSize:12,color:"#6b7280",display:"flex",gap:12,flexWrap:"wrap"}}>{student.phone&&<span>📞 {student.phone}</span>}{student.email&&<span>✉️ {student.email}</span>}</div>
         <div style={S.cardStats}><div style={S.miniStat}><span style={S.miniStatVal}>{sl.length}</span><span style={S.miniStatLbl}>lezioni totali</span></div><div style={S.miniStat}><span style={S.miniStatVal}>{student.package_used}/{student.package_total}</span><span style={S.miniStatLbl}>usate/tot</span></div></div>
         {student.notes&&<div style={S.cardNotes}>📝 {student.notes}</div>}
-        <div style={S.cardActions}><button style={S.btnSm} onClick={()=>setSel(student)}>Scheda</button><button style={{...S.btnSm,background:"#10b98110",color:"#10b981",border:"1px solid #10b98130"}} onClick={()=>setRM(student)}>♻️ Ripristina</button></div>
+        <div style={S.cardActions}><button style={S.btnSm} onClick={()=>setSel(student)}>Scheda</button><button style={{...S.btnSm,background:"#10b98110",color:"#10b981",border:"1px solid #10b98130"}} onClick={()=>setRM(student)}>♻️ Ripristina</button><button style={{...S.btnSm,background:"#fee2e220",color:"#dc2626",border:"1px solid #fca5a5"}} onClick={()=>setConfirmTrash(student.id)}>🗑️ Cestino</button></div>
       </div>);
     })}</div>)}
     {selected&&<StudentDetailModal student={selected} lessons={lessons.filter(l=>l.student_id===selected.id)} onClose={()=>setSel(null)}/>}
     {restoreModal&&<RestoreModal student={restoreModal} teachers={teachers} onRestore={(tid)=>{onRestore(restoreModal.id,tid);setRM(null);}} onClose={()=>setRM(null)}/>}
+    {confirmTrash&&<ConfirmModal title="Sposta nel cestino" text="Lo studente andrà nel cestino. Potrai recuperarlo o eliminarlo definitivamente." onConfirm={()=>{onTrash(confirmTrash);setConfirmTrash(null);}} onClose={()=>setConfirmTrash(null)}/>}
+  </div>);
+}
+
+function TrashPage({students,onRestore,onDeleteForever}) {
+  const [confirmDel,setConfirmDel]=useState(null);
+  return (<div style={S.page}>
+    <h1 style={S.pageTitle}>🗑️ Cestino</h1><p style={S.pageSub}>Gli studenti nel cestino possono essere recuperati o eliminati definitivamente.</p>
+    {students.length===0?<Empty text="Il cestino è vuoto"/>:(<div style={S.cardGrid}>{students.map(student=>{
+      return(<div key={student.id} style={{...S.studentCard,borderLeft:"4px solid #ef4444",opacity:0.85}}>
+        <div style={S.cardTop}><div style={{...S.studentAvatar,background:"#ef444420",color:"#ef4444"}}>{student.name.split(" ").map(n=>n[0]).join("").slice(0,2)}</div><div style={{flex:1}}><div style={S.studentName}>{student.name}</div><div style={S.studentMeta}>Livello {student.level}</div></div><LevelBadge level={student.level}/></div>
+        <div style={{marginBottom:10,fontSize:12,color:"#6b7280",display:"flex",gap:12,flexWrap:"wrap"}}>{student.phone&&<span>📞 {student.phone}</span>}{student.email&&<span>✉️ {student.email}</span>}</div>
+        <div style={S.cardActions}>
+          <button style={{...S.btnSm,background:"#10b98110",color:"#10b981",border:"1px solid #10b98130"}} onClick={()=>onRestore(student.id)}>♻️ Ripristina</button>
+          <button style={{...S.btnSm,background:"#ef444420",color:"#ef4444",border:"1px solid #fca5a5"}} onClick={()=>setConfirmDel(student.id)}>❌ Elimina definitivamente</button>
+        </div>
+      </div>);
+    })}</div>)}
+    {confirmDel&&<ConfirmModal title="Elimina definitivamente" text="Attenzione: questa operazione è irreversibile. Lo studente e tutti i suoi dati verranno eliminati per sempre." onConfirm={()=>{onDeleteForever(confirmDel);setConfirmDel(null);}} onClose={()=>setConfirmDel(null)}/>}
   </div>);
 }
 
