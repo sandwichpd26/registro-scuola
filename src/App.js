@@ -282,6 +282,13 @@ export default function App() {
     try { await db.upsertLesson(obj); showToast("Lezione registrata ✓"); }
     catch(e) { setLessons(p=>p.filter(x=>x.id!==obj.id)); showToast("Errore salvataggio","err"); }
   };
+  // Usata dall'admin per importare lezioni da Google Calendar (teacher_id esplicito)
+  const addLessonAsAdmin = async l => {
+    const obj={...l,id:uid()};
+    setLessons(p=>[obj,...p]); bump(l.student_id,1);
+    try { await db.upsertLesson(obj); }
+    catch(e) { setLessons(p=>p.filter(x=>x.id!==obj.id)); throw e; }
+  };
   const updateLesson = async l => {
     setLessons(p=>p.map(x=>x.id===l.id?l:x));
     try { await db.upsertLesson(l); showToast("Lezione aggiornata"); }
@@ -365,7 +372,7 @@ export default function App() {
     students: <StudentsPage user={currentUser} students={allActiveStudents} classes={myClasses} teachers={teachers} lessons={lessons} classLessons={classLessons} isAdmin={isAdmin} onAdd={addStudent} onUpdate={updateStudent} onArchive={archiveStudent} onTrash={trashStudent}/>,
     lessons:  <LessonsPage  user={currentUser} students={activeStudents} lessons={lessons} teachers={teachers} isAdmin={isAdmin} onAdd={addLesson} onAddRecurring={addRecurringLessons} onUpdate={updateLesson} onDelete={deleteLesson}/>,
     classes:  <ClassesPage  user={currentUser} students={allActiveStudents} classes={myClasses} classLessons={myClassLessons} teachers={teachers} isAdmin={isAdmin} onAddClass={addClass} onUpdateClass={updateClass} onDeleteClass={deleteClass} onAddClassLesson={addClassLesson} onUpdateClassLesson={updateClassLesson} onDeleteClassLesson={deleteClassLesson}/>,
-    calendar: <CalendarPage user={currentUser} students={myStudents} lessons={lessons} classLessons={classLessons} classes={myClasses} teachers={teachers} isAdmin={isAdmin} notes={myNotes} onAddNote={addNote} onUpdateNote={updateNote} onDeleteNote={deleteNote}/>,
+    calendar: <CalendarPage user={currentUser} students={myStudents} lessons={lessons} classLessons={classLessons} classes={myClasses} teachers={teachers} isAdmin={isAdmin} notes={myNotes} onAddNote={addNote} onUpdateNote={updateNote} onDeleteNote={deleteNote} onImportLesson={addLessonAsAdmin} allStudents={students}/>,
     reports:  <ReportsPage  user={currentUser} students={isAdmin?students:activeStudents} classes={myClasses} lessons={lessons} classLessons={classLessons} teachers={teachers} isAdmin={isAdmin}/>,
     report_s: <StudentReportPage user={currentUser} students={myStudents.filter(s=>s.active&&!s.deleted)} lessons={lessons} isAdmin={isAdmin}/>,
     archive:  isAdmin?<ArchivePage students={archivedStudents} teachers={teachers} archivedTeachers={archivedTeachers} lessons={lessons} onRestore={restoreStudent} onTrash={trashStudent} onArchiveTeacher={archiveTeacher} onRestoreTeacher={restoreTeacher} onTrashTeacher={trashTeacher}/>:null,
@@ -770,9 +777,15 @@ function ClassLessonModal({cls,students,lesson,onSave,onClose}) {
 }
 
 // ── CALENDARIO — identico all'originale ───────────────────────────
-function CalendarPage({user,students,lessons,classLessons,classes,teachers,isAdmin,notes,onAddNote,onUpdateNote,onDeleteNote}) {
+function CalendarPage({user,students,lessons,classLessons,classes,teachers,isAdmin,notes,onAddNote,onUpdateNote,onDeleteNote,onImportLesson,allStudents}) {
   const [cur,setCur]=useState(()=>{ const d=new Date(); return new Date(d.getFullYear(),d.getMonth(),1); });
   const [selDay,setSel]=useState(null);const [filterT,setFT]=useState("all");const [noteModal,setNM]=useState(null);
+  // Google Calendar import state (solo admin)
+  const [gcModal,setGC]=useState(false);
+  const [gcUrl,setGcUrl]=useState(()=>localStorage.getItem("gc_ical_url")||"");
+  const [gcLoading,setGcLoading]=useState(false);
+  const [gcResult,setGcResult]=useState(null); // {imported, skipped, errors}
+
   const year=cur.getFullYear(),month=cur.getMonth();
   const daysInMonth=new Date(year,month+1,0).getDate();
   const startOffset=(new Date(year,month,1).getDay()+6)%7;
@@ -786,11 +799,117 @@ function CalendarPage({user,students,lessons,classLessons,classes,teachers,isAdm
   const teacherList=teachers.filter(t=>t.role==="teacher");
   const tc=tid=>teachers.find(t=>t.id===tid)?.color||"#6366f1";
   const monthNotes=notes.filter(n=>n.date.startsWith(`${year}-${String(month+1).padStart(2,"0")}`));
+
+  // ── IMPORTAZIONE GOOGLE CALENDAR ──────────────────────────────
+  const parseIcalDate = str => {
+    // Formato: 20260310T090000Z oppure 20260310T090000 oppure 20260310
+    if(!str) return null;
+    const s = str.replace(/[TZ]/g," ").trim();
+    const y=s.slice(0,4), mo=s.slice(4,6), d=s.slice(6,8);
+    const h=s.slice(9,11)||"00", mi=s.slice(11,13)||"00";
+    return { date:`${y}-${mo}-${d}`, time:`${h}:${mi}` };
+  };
+
+  const importFromGoogleCalendar = async () => {
+    if(!gcUrl.trim()) return;
+    setGcLoading(true); setGcResult(null);
+    try {
+      // Proxy CORS-free
+      const proxy=`https://api.allorigins.win/get?url=${encodeURIComponent(gcUrl.trim())}`;
+      const res=await fetch(proxy);
+      if(!res.ok) throw new Error("Errore di rete");
+      const json=await res.json();
+      const ical=json.contents;
+      if(!ical||!ical.includes("BEGIN:VCALENDAR")) throw new Error("Link non valido. Usa il link iCal segreto da Google Calendar.");
+
+      // Estrai eventi
+      const blocks=ical.split("BEGIN:VEVENT").slice(1);
+      let imported=0, skipped=0, errors=[];
+
+      // Tutti gli studenti attivi disponibili
+      const activeStudents=(allStudents||students).filter(s=>s.active&&!s.deleted);
+
+      for(const block of blocks) {
+        try {
+          const get=key=>{const m=block.match(new RegExp(`${key}[^:\r\n]*:([^\r\n]+)`));return m?m[1].trim().replace(/\\n/g," ").replace(/\\,/g,","):""};
+          const summary=get("SUMMARY");
+          const dtstart=get("DTSTART");
+          const dtend=get("DTEND");
+          if(!summary||!dtstart){skipped++;continue;}
+
+          // Controlla che l'evento sia nel mese visualizzato
+          const startParsed=parseIcalDate(dtstart);
+          if(!startParsed){skipped++;continue;}
+          const evMonth=startParsed.date.slice(0,7);
+          const curMonth=`${year}-${String(month+1).padStart(2,"0")}`;
+          if(evMonth!==curMonth){skipped++;continue;}
+
+          // Cerca lo studente nel titolo (confronto case-insensitive, nome o cognome)
+          const titleLower=summary.toLowerCase();
+          const matchedStudent=activeStudents.find(s=>{
+            const nameParts=s.name.toLowerCase().split(" ");
+            return nameParts.some(part=>part.length>2&&titleLower.includes(part));
+          });
+
+          if(!matchedStudent){
+            errors.push(`"${summary}" — studente non trovato`);
+            skipped++; continue;
+          }
+
+          // Calcola durata in minuti
+          let duration=60;
+          if(dtend){
+            const endParsed=parseIcalDate(dtend);
+            if(endParsed&&startParsed){
+              const start=new Date(`${startParsed.date}T${startParsed.time||"00:00"}`);
+              const end=new Date(`${endParsed.date}T${endParsed.time||"00:00"}`);
+              const mins=Math.round((end-start)/60000);
+              if(mins>0&&mins<=480) duration=mins;
+            }
+          }
+
+          // Controlla se la lezione esiste già (stesso studente, data, ora)
+          const duplicate=lessons.find(l=>
+            l.student_id===matchedStudent.id&&
+            l.date===startParsed.date&&
+            l.time===startParsed.time
+          );
+          if(duplicate){skipped++;continue;}
+
+          // Determina insegnante dal teacher_id dello studente
+          const teacherId=matchedStudent.teacher_id;
+          if(!teacherId){errors.push(`"${summary}" — nessun insegnante assegnato a ${matchedStudent.name}`);skipped++;continue;}
+
+          await onImportLesson({
+            student_id:matchedStudent.id,
+            teacher_id:teacherId,
+            date:startParsed.date,
+            time:startParsed.time||"00:00",
+            duration,
+            topic:summary,
+            homework:"",
+            present:true,
+            mode:"presenza",
+            zoom_account:"",
+          });
+          imported++;
+        } catch(e){ skipped++; }
+      }
+
+      localStorage.setItem("gc_ical_url",gcUrl.trim());
+      setGcResult({imported,skipped,errors});
+    } catch(e){
+      setGcResult({imported:0,skipped:0,errors:[e.message]});
+    }
+    setGcLoading(false);
+  };
+
   return (<div style={S.page}>
     <div style={S.pageHeader}>
       <div><h1 style={S.pageTitle}>📅 Calendario</h1><p style={S.pageSub}>{isAdmin?"Vista per insegnante (colori)":`Lezioni di ${user.name}`}</p></div>
       <div style={{display:"flex",gap:8,alignItems:"center"}}>
         {isAdmin&&<select style={{...S.input,width:"auto",minWidth:180}} value={filterT} onChange={e=>setFT(e.target.value)}><option value="all">Tutti gli insegnanti</option>{teacherList.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select>}
+        {isAdmin&&<button style={{...S.btnPrimary,width:"auto",padding:"8px 16px",background:"#4285f4"}} onClick={()=>{setGC(true);setGcResult(null);}}>📥 Importa da Google Calendar</button>}
         <button style={{...S.btnPrimary,width:"auto",padding:"8px 16px"}} onClick={()=>setNM("add")}>+ Nota</button>
       </div>
     </div>
@@ -820,7 +939,7 @@ function CalendarPage({user,students,lessons,classLessons,classes,teachers,isAdm
           })}
         </div>
         <div style={{padding:"8px 16px 12px",borderTop:"1px solid #f8fafc",display:"flex",gap:12,flexWrap:"wrap"}}>
-          {isAdmin?teacherList.map(t=><div key={t.id} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:t.color}}><span style={{width:8,height:8,borderRadius:"50%",background:t.color,display:"inline-block"}}/>{t.name}</div>):[["#6366f1","Individuali"],["#f59e0b","Classi"]].map(([c,l])=><div key={l} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:"#6b7280"}}><span style={{width:8,height:8,borderRadius:"50%",background:c,display:"inline-block"}}/>{l}</div>)}
+          {isAdmin?teacherList.map(t=><div key={t.id} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:t.color}}><span style={{width:8,height:8,borderRadius:"50%",background:t.color,display:"inline-block"}}/>{t.name}</div>):[[" #6366f1","Individuali"],["#f59e0b","Classi"]].map(([c,l])=><div key={l} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:"#6b7280"}}><span style={{width:8,height:8,borderRadius:"50%",background:c,display:"inline-block"}}/>{l}</div>)}
           <div style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:"#6b7280"}}><span style={{width:8,height:8,borderRadius:"50%",background:"#94a3b8",display:"inline-block"}}/>Note</div>
         </div>
       </div>
@@ -833,25 +952,66 @@ function CalendarPage({user,students,lessons,classLessons,classes,teachers,isAdm
             <h3 style={{margin:0,fontSize:14,fontWeight:700}}>{new Date(selData.ds).toLocaleDateString("it-IT",{weekday:"long",day:"numeric",month:"long"})}</h3>
             <button style={{...S.btnPrimary,width:"auto",padding:"5px 12px",fontSize:12}} onClick={()=>setNM({date:selData.ds,text:""})}>+ Nota</button>
           </div>
-          {selData.dayNotes.length>0&&<div style={{marginBottom:12}}>
-            <div style={{fontSize:11,fontWeight:700,color:"#9ca3af",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>📌 Note</div>
+          {selData.dayNotes.length>0&&<div style={{marginBottom:12}}><div style={{fontSize:11,fontWeight:700,color:"#9ca3af",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>📌 Note</div>
             {selData.dayNotes.map(n=><div key={n.id} style={{background:"#fffbeb",borderRadius:10,padding:"10px 12px",marginBottom:6,borderLeft:"3px solid #f59e0b",fontSize:13,display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}><span style={{flex:1}}>{n.text}</span><div style={{display:"flex",gap:4,flexShrink:0}}><button style={S.iconBtn} onClick={()=>setNM(n)}>✏️</button><button style={S.iconBtn} onClick={()=>onDeleteNote(n.id)}>🗑️</button></div></div>)}
           </div>}
           {selData.indiv.length===0&&selData.cls.length===0?<div style={{textAlign:"center",padding:"16px 0",color:"#9ca3af",fontSize:13}}>Nessuna lezione</div>:<>
             {selData.indiv.length>0&&<><div style={{fontSize:11,fontWeight:700,color:"#9ca3af",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>Individuali</div>
-              {[...selData.indiv].sort((a,b)=>(a.time||"").localeCompare(b.time||"")).map(l=>{const st=students.find(s=>s.id===l.student_id);const t=teachers.find(t=>t.id===l.teacher_id);return<div key={l.id} style={{background:"#f8fafc",borderRadius:10,padding:"10px 12px",marginBottom:8,borderLeft:`3px solid ${tc(l.teacher_id)}`}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}><span style={S.timeBadge}>{l.time}</span><div style={{display:"flex",gap:6,alignItems:"center"}}><ModeBadge mode={l.mode}/><Pill ok={l.present}/></div></div><div style={{fontWeight:600,fontSize:13}}>{st?.name||"—"}</div><div style={{fontSize:12,color:"#6b7280"}}>{l.topic} · {l.duration}min</div>{isAdmin&&<div style={{fontSize:11,color:tc(l.teacher_id),fontWeight:600,marginTop:2}}>👤 {t?.name}</div>}</div>;})}
+              {[...selData.indiv].sort((a,b)=>(a.time||"").localeCompare(b.time||"")).map(l=>{const st=students.find(s=>s.id===l.student_id);const t=teachers.find(t=>t.id===l.teacher_id);return<div key={l.id} style={{background:"#f8fafc",borderRadius:10,padding:"10px 12px",marginBottom:8,borderLeft:`3px solid ${tc(l.teacher_id)}`}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}><span style={S.timeBadge}>{l.time}</span><div style={{display:"flex",gap:6,alignItems:"center"}}><span style={{fontSize:11,color:"#6b7280"}}>{l.duration}min</span></div></div><div style={{fontWeight:600,fontSize:13}}>{st?.name||"—"}</div><div style={{fontSize:12,color:"#6b7280"}}>{l.topic}</div>{isAdmin&&<div style={{fontSize:11,color:tc(l.teacher_id),fontWeight:600,marginTop:2}}>👤 {t?.name}</div>}</div>;})}
             </>}
             {selData.cls.length>0&&<><div style={{fontSize:11,fontWeight:700,color:"#9ca3af",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6,marginTop:8}}>Classi</div>
-              {[...selData.cls].sort((a,b)=>(a.time||"").localeCompare(b.time||"")).map(l=>{const cls=classes.find(c=>c.id===l.class_id);const t=teachers.find(t=>t.id===l.teacher_id);const att=Object.values(l.attendances||{}).filter(Boolean).length;const tot2=Object.keys(l.attendances||{}).length;return<div key={l.id} style={{background:"#fffbeb",borderRadius:10,padding:"10px 12px",marginBottom:8,borderLeft:`3px solid ${tc(l.teacher_id)}`}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}><span style={S.timeBadge}>{l.time}</span><div style={{display:"flex",gap:6,alignItems:"center"}}><ModeBadge mode={l.mode}/><span style={{fontSize:12,color:"#6b7280"}}>{att}/{tot2} presenti</span></div></div><div style={{fontWeight:600,fontSize:13}}>{cls?.name||"—"} 👥</div><div style={{fontSize:12,color:"#6b7280"}}>{l.topic} · {l.duration}min</div>{isAdmin&&<div style={{fontSize:11,color:tc(l.teacher_id),fontWeight:600,marginTop:2}}>👤 {t?.name}</div>}</div>;})}
+              {[...selData.cls].sort((a,b)=>(a.time||"").localeCompare(b.time||"")).map(l=>{const cls=classes.find(c=>c.id===l.class_id);const t=teachers.find(t=>t.id===l.teacher_id);const att=Object.values(l.attendances||{}).filter(Boolean).length;const tot2=Object.keys(l.attendances||{}).length;return<div key={l.id} style={{background:"#fffbeb",borderRadius:10,padding:"10px 12px",marginBottom:8,borderLeft:`3px solid ${tc(l.teacher_id)}`}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}><span style={S.timeBadge}>{l.time}</span><span style={{fontSize:12,color:"#6b7280"}}>{att}/{tot2} presenti</span></div><div style={{fontWeight:600,fontSize:13}}>{cls?.name||"—"} 👥</div><div style={{fontSize:12,color:"#6b7280"}}>{l.topic}</div>{isAdmin&&<div style={{fontSize:11,color:tc(l.teacher_id),fontWeight:600,marginTop:2}}>👤 {t?.name}</div>}</div>;})}
             </>}
           </>}
         </>)}
       </div>
     </div>
     {noteModal&&<NoteModal note={noteModal==="add"?{date:today(),text:""}:noteModal} isNew={noteModal==="add"||!noteModal.id} onSave={n=>{noteModal==="add"||!noteModal.id?onAddNote(n):onUpdateNote(n);setNM(null);}} onClose={()=>setNM(null)}/>}
+
+    {/* MODALE IMPORTAZIONE GOOGLE CALENDAR */}
+    {gcModal&&<Overlay onClose={()=>{setGC(false);setGcResult(null);}}>
+      <h2 style={S.modalTitle}>📥 Importa da Google Calendar</h2>
+      <div style={{background:"#eff6ff",borderRadius:10,padding:"12px 16px",marginBottom:16,fontSize:13,color:"#1e40af",lineHeight:1.6}}>
+        <strong>Come trovare il link iCal:</strong><br/>
+        1. Apri <strong>Google Calendar</strong><br/>
+        2. Clicca ⚙️ Impostazioni → seleziona il calendario della scuola<br/>
+        3. Scorri fino a <strong>"Indirizzo segreto in formato iCal"</strong><br/>
+        4. Copia il link e incollalo qui sotto
+      </div>
+      <div style={S.field}>
+        <label style={S.label}>Link iCal segreto del calendario</label>
+        <input style={S.input} value={gcUrl} onChange={e=>setGcUrl(e.target.value)} placeholder="https://calendar.google.com/calendar/ical/..."/>
+        <div style={{fontSize:11,color:"#9ca3af",marginTop:4}}>Il link viene salvato automaticamente per i prossimi utilizzi.</div>
+      </div>
+      <div style={{background:"#f8fafc",borderRadius:10,padding:"12px 16px",marginBottom:16,fontSize:13,color:"#374151"}}>
+        <strong>📋 Come funziona l'importazione:</strong><br/>
+        • Vengono importate solo le lezioni del <strong>mese attualmente visualizzato</strong><br/>
+        • Il nome dello studente viene cercato nel titolo dell'evento<br/>
+        • Le lezioni già presenti nel registro vengono saltate automaticamente<br/>
+        • L'insegnante viene assegnato in base allo studente trovato
+      </div>
+      {gcResult&&(
+        <div style={{background:gcResult.imported>0?"#f0fdf4":"#fff7ed",border:`1px solid ${gcResult.imported>0?"#86efac":"#fed7aa"}`,borderRadius:10,padding:"12px 16px",marginBottom:16,fontSize:13}}>
+          <div style={{fontWeight:700,marginBottom:6,color:gcResult.imported>0?"#166534":"#9a3412"}}>
+            {gcResult.imported>0?`✅ Importate ${gcResult.imported} lezioni`:"⚠️ Nessuna lezione importata"}
+            {gcResult.skipped>0&&<span style={{fontWeight:400,color:"#6b7280"}}> · {gcResult.skipped} saltate</span>}
+          </div>
+          {gcResult.errors.length>0&&<div>
+            <div style={{fontWeight:600,marginBottom:4,color:"#92400e"}}>Lezioni non abbinate:</div>
+            {gcResult.errors.map((e,i)=><div key={i} style={{color:"#b45309",fontSize:12,marginBottom:2}}>• {e}</div>)}
+            <div style={{fontSize:11,color:"#9ca3af",marginTop:6}}>Assicurati che il nome dello studente nel titolo dell'evento corrisponda a quello nel registro.</div>
+          </div>}
+        </div>
+      )}
+      <div style={S.modalActions}>
+        <button style={S.btnSecondary} onClick={()=>{setGC(false);setGcResult(null);}}>Chiudi</button>
+        <button style={{...S.btnPrimary,width:"auto",background:"#4285f4"}} disabled={!gcUrl.trim()||gcLoading} onClick={importFromGoogleCalendar}>
+          {gcLoading?"⏳ Importazione in corso…":"📥 Importa lezioni di "+cur.toLocaleDateString("it-IT",{month:"long",year:"numeric"})}
+        </button>
+      </div>
+    </Overlay>}
   </div>);
 }
-
 function NoteModal({note,isNew,onSave,onClose}) {
   const [form,setForm]=useState({date:note.date||today(),text:note.text||"",...(note.id?{id:note.id}:{})});
   return (<Overlay onClose={onClose}>
