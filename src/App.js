@@ -282,7 +282,6 @@ export default function App() {
     try { await db.upsertLesson(obj); showToast("Lezione registrata ✓"); }
     catch(e) { setLessons(p=>p.filter(x=>x.id!==obj.id)); showToast("Errore salvataggio","err"); }
   };
-  // Usata dall'admin per importare lezioni da Google Calendar (teacher_id esplicito)
   const addLessonAsAdmin = async l => {
     const obj={...l,id:uid()};
     setLessons(p=>[obj,...p]); bump(l.student_id,1);
@@ -372,7 +371,7 @@ export default function App() {
     students: <StudentsPage user={currentUser} students={allActiveStudents} classes={myClasses} teachers={teachers} lessons={lessons} classLessons={classLessons} isAdmin={isAdmin} onAdd={addStudent} onUpdate={updateStudent} onArchive={archiveStudent} onTrash={trashStudent}/>,
     lessons:  <LessonsPage  user={currentUser} students={activeStudents} lessons={lessons} teachers={teachers} isAdmin={isAdmin} onAdd={addLesson} onAddRecurring={addRecurringLessons} onUpdate={updateLesson} onDelete={deleteLesson}/>,
     classes:  <ClassesPage  user={currentUser} students={allActiveStudents} classes={myClasses} classLessons={myClassLessons} teachers={teachers} isAdmin={isAdmin} onAddClass={addClass} onUpdateClass={updateClass} onDeleteClass={deleteClass} onAddClassLesson={addClassLesson} onUpdateClassLesson={updateClassLesson} onDeleteClassLesson={deleteClassLesson}/>,
-    calendar: <CalendarPage user={currentUser} students={myStudents} lessons={lessons} classLessons={classLessons} classes={myClasses} teachers={teachers} isAdmin={isAdmin} notes={myNotes} onAddNote={addNote} onUpdateNote={updateNote} onDeleteNote={deleteNote} onImportLesson={addLessonAsAdmin} allStudents={students}/>,
+    calendar: <CalendarPage user={currentUser} students={myStudents} lessons={lessons} classLessons={classLessons} classes={myClasses} teachers={teachers} isAdmin={isAdmin} notes={myNotes} onAddNote={addNote} onUpdateNote={updateNote} onDeleteNote={deleteNote} onImportLesson={addLessonAsAdmin} allStudents={students} allTeachers={teachers}/>,
     reports:  <ReportsPage  user={currentUser} students={isAdmin?students:activeStudents} classes={myClasses} lessons={lessons} classLessons={classLessons} teachers={teachers} isAdmin={isAdmin}/>,
     report_s: <StudentReportPage user={currentUser} students={myStudents.filter(s=>s.active&&!s.deleted)} lessons={lessons} isAdmin={isAdmin}/>,
     archive:  isAdmin?<ArchivePage students={archivedStudents} teachers={teachers} archivedTeachers={archivedTeachers} lessons={lessons} onRestore={restoreStudent} onTrash={trashStudent} onArchiveTeacher={archiveTeacher} onRestoreTeacher={restoreTeacher} onTrashTeacher={trashTeacher}/>:null,
@@ -777,14 +776,15 @@ function ClassLessonModal({cls,students,lesson,onSave,onClose}) {
 }
 
 // ── CALENDARIO — identico all'originale ───────────────────────────
-function CalendarPage({user,students,lessons,classLessons,classes,teachers,isAdmin,notes,onAddNote,onUpdateNote,onDeleteNote,onImportLesson,allStudents}) {
+function CalendarPage({user,students,lessons,classLessons,classes,teachers,isAdmin,notes,onAddNote,onUpdateNote,onDeleteNote,onImportLesson,allStudents,allTeachers}) {
   const [cur,setCur]=useState(()=>{ const d=new Date(); return new Date(d.getFullYear(),d.getMonth(),1); });
   const [selDay,setSel]=useState(null);const [filterT,setFT]=useState("all");const [noteModal,setNM]=useState(null);
-  // Google Calendar import state (solo admin)
-  const [gcModal,setGC]=useState(false);
-  const [gcUrl,setGcUrl]=useState(()=>localStorage.getItem("gc_ical_url")||"");
-  const [gcLoading,setGcLoading]=useState(false);
-  const [gcResult,setGcResult]=useState(null); // {imported, skipped, errors}
+  const [gcStatus,setGcStatus]=useState("idle"); // idle | loading | syncing | done | error
+  const [gcMessage,setGcMsg]=useState("");
+  const [gcCount,setGcCount]=useState(null);
+
+  const GOOGLE_CLIENT_ID = "389289626389-tehsnne7dqg4mnff2pu8npc8ce26382v.apps.googleusercontent.com";
+  const SCOPES = "https://www.googleapis.com/auth/calendar.readonly";
 
   const year=cur.getFullYear(),month=cur.getMonth();
   const daysInMonth=new Date(year,month+1,0).getDate();
@@ -800,119 +800,198 @@ function CalendarPage({user,students,lessons,classLessons,classes,teachers,isAdm
   const tc=tid=>teachers.find(t=>t.id===tid)?.color||"#6366f1";
   const monthNotes=notes.filter(n=>n.date.startsWith(`${year}-${String(month+1).padStart(2,"0")}`));
 
-  // ── IMPORTAZIONE GOOGLE CALENDAR ──────────────────────────────
-  const parseIcalDate = str => {
-    // Formato: 20260310T090000Z oppure 20260310T090000 oppure 20260310
-    if(!str) return null;
-    const s = str.replace(/[TZ]/g," ").trim();
-    const y=s.slice(0,4), mo=s.slice(4,6), d=s.slice(6,8);
-    const h=s.slice(9,11)||"00", mi=s.slice(11,13)||"00";
-    return { date:`${y}-${mo}-${d}`, time:`${h}:${mi}` };
+  // ── GOOGLE CALENDAR SYNC ────────────────────────────────────────
+  const loadGapiScript = () => new Promise((resolve,reject)=>{
+    if(window.gapi){resolve();return;}
+    const s=document.createElement("script");
+    s.src="https://apis.google.com/js/api.js";
+    s.onload=resolve; s.onerror=reject;
+    document.head.appendChild(s);
+  });
+
+  const loadGisScript = () => new Promise((resolve,reject)=>{
+    if(window.google?.accounts){resolve();return;}
+    const s=document.createElement("script");
+    s.src="https://accounts.google.com/gsi/client";
+    s.onload=resolve; s.onerror=reject;
+    document.head.appendChild(s);
+  });
+
+  const parseGoogleEvent = (event, teacherName) => {
+    const start = event.start?.dateTime || event.start?.date;
+    const end   = event.end?.dateTime   || event.end?.date;
+    if(!start) return null;
+
+    const startDate = start.split("T")[0];
+    const startTime = start.includes("T") ? start.split("T")[1].slice(0,5) : "09:00";
+
+    // Calcola durata
+    let duration = 60;
+    if(end){
+      const s=new Date(start), e=new Date(end);
+      const mins=Math.round((e-s)/60000);
+      if(mins>=15&&mins<=480) duration=mins;
+    }
+
+    // Modalità
+    const title=(event.summary||"").toLowerCase();
+    const mode = title.includes("onl.")||title.includes("online")||title.includes("zoom") ? "online" : "presenza";
+
+    return { startDate, startTime, duration, summary:event.summary||"", mode };
   };
 
-  const importFromGoogleCalendar = async () => {
-    if(!gcUrl.trim()) return;
-    setGcLoading(true); setGcResult(null);
-    try {
-      // Proxy CORS-free
-      const proxy=`https://api.allorigins.win/get?url=${encodeURIComponent(gcUrl.trim())}`;
-      const res=await fetch(proxy);
-      if(!res.ok) throw new Error("Errore di rete");
-      const json=await res.json();
-      const ical=json.contents;
-      if(!ical||!ical.includes("BEGIN:VCALENDAR")) throw new Error("Link non valido. Usa il link iCal segreto da Google Calendar.");
+  const findStudent = (eventSummary, teacherName) => {
+    const activeStudents = (allStudents||students).filter(s=>s.active&&!s.deleted);
+    const titleLower = eventSummary.toLowerCase();
+    // Cerca per nome studente nel titolo
+    return activeStudents.find(s=>{
+      const nameParts = s.name.toLowerCase().split(" ");
+      return nameParts.filter(p=>p.length>2).some(p=>titleLower.includes(p));
+    });
+  };
 
-      // Estrai eventi
-      const blocks=ical.split("BEGIN:VEVENT").slice(1);
+  const syncGoogleCalendar = async () => {
+    setGcStatus("loading"); setGcMsg("Caricamento librerie Google…"); setGcCount(null);
+    try {
+      await Promise.all([loadGapiScript(), loadGisScript()]);
+
+      // Inizializza GAPI
+      await new Promise((res,rej)=>window.gapi.load("client",{callback:res,onerror:rej}));
+      await window.gapi.client.init({});
+      await window.gapi.client.load("https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest");
+
+      setGcMsg("Accesso a Google Calendar…");
+
+      // OAuth2 token
+      const token = await new Promise((resolve,reject)=>{
+        const client = window.google.accounts.oauth2.initTokenClient({
+          client_id: GOOGLE_CLIENT_ID,
+          scope: SCOPES,
+          callback: (resp) => {
+            if(resp.error) reject(new Error(resp.error));
+            else resolve(resp.access_token);
+          }
+        });
+        client.requestAccessToken({prompt:""});
+      });
+
+      window.gapi.client.setToken({access_token: token});
+
+      setGcMsg("Lettura calendari…");
+
+      // Recupera lista calendari
+      const calListResp = await window.gapi.client.calendar.calendarList.list();
+      const calendars = calListResp.result.items || [];
+
+      // Periodo: mese corrente + prossimi 3 mesi
+      const timeMin = new Date(year,month,1).toISOString();
+      const timeMax = new Date(year,month+3,0).toISOString();
+
+      setGcMsg("Importazione lezioni…");
+
       let imported=0, skipped=0, errors=[];
 
-      // Tutti gli studenti attivi disponibili
-      const activeStudents=(allStudents||students).filter(s=>s.active&&!s.deleted);
+      for(const cal of calendars){
+        // Identifica insegnante dal nome calendario
+        const calName = cal.summary || "";
+        const matchedTeacher = (allTeachers||teachers).find(t=>
+          t.role==="teacher" &&
+          (calName.toLowerCase().includes(t.name.toLowerCase().split(" ")[0].toLowerCase()) ||
+           t.name.toLowerCase().includes(calName.toLowerCase().split(/[\s_]/)[0].toLowerCase()))
+        );
 
-      for(const block of blocks) {
-        try {
-          const get=key=>{const m=block.match(new RegExp(`${key}[^:\r\n]*:([^\r\n]+)`));return m?m[1].trim().replace(/\\n/g," ").replace(/\\,/g,","):""};
-          const summary=get("SUMMARY");
-          const dtstart=get("DTSTART");
-          const dtend=get("DTEND");
-          if(!summary||!dtstart){skipped++;continue;}
+        if(!matchedTeacher) continue; // Salta calendari non abbinati a insegnanti
 
-          // Controlla che l'evento sia nel mese visualizzato
-          const startParsed=parseIcalDate(dtstart);
-          if(!startParsed){skipped++;continue;}
-          const evMonth=startParsed.date.slice(0,7);
-          const curMonth=`${year}-${String(month+1).padStart(2,"0")}`;
-          if(evMonth!==curMonth){skipped++;continue;}
+        // Recupera eventi
+        const eventsResp = await window.gapi.client.calendar.events.list({
+          calendarId: cal.id,
+          timeMin, timeMax,
+          singleEvents: true,
+          orderBy: "startTime",
+          maxResults: 500,
+        });
 
-          // Cerca lo studente nel titolo (confronto case-insensitive, nome o cognome)
-          const titleLower=summary.toLowerCase();
-          const matchedStudent=activeStudents.find(s=>{
-            const nameParts=s.name.toLowerCase().split(" ");
-            return nameParts.some(part=>part.length>2&&titleLower.includes(part));
-          });
+        const events = eventsResp.result.items || [];
 
-          if(!matchedStudent){
-            errors.push(`"${summary}" — studente non trovato`);
+        for(const event of events){
+          const parsed = parseGoogleEvent(event, matchedTeacher.name);
+          if(!parsed) continue;
+
+          // Cerca studente
+          const student = findStudent(parsed.summary, matchedTeacher.name);
+          if(!student){
+            errors.push(`"${parsed.summary}" (${matchedTeacher.name}) — studente non trovato`);
             skipped++; continue;
           }
 
-          // Calcola durata in minuti
-          let duration=60;
-          if(dtend){
-            const endParsed=parseIcalDate(dtend);
-            if(endParsed&&startParsed){
-              const start=new Date(`${startParsed.date}T${startParsed.time||"00:00"}`);
-              const end=new Date(`${endParsed.date}T${endParsed.time||"00:00"}`);
-              const mins=Math.round((end-start)/60000);
-              if(mins>0&&mins<=480) duration=mins;
-            }
-          }
-
-          // Controlla se la lezione esiste già (stesso studente, data, ora)
-          const duplicate=lessons.find(l=>
-            l.student_id===matchedStudent.id&&
-            l.date===startParsed.date&&
-            l.time===startParsed.time
+          // Controlla duplicati
+          const dup = lessons.find(l=>
+            l.student_id===student.id &&
+            l.date===parsed.startDate &&
+            l.time===parsed.startTime
           );
-          if(duplicate){skipped++;continue;}
+          if(dup){skipped++;continue;}
 
-          // Determina insegnante dal teacher_id dello studente
-          const teacherId=matchedStudent.teacher_id;
-          if(!teacherId){errors.push(`"${summary}" — nessun insegnante assegnato a ${matchedStudent.name}`);skipped++;continue;}
-
-          await onImportLesson({
-            student_id:matchedStudent.id,
-            teacher_id:teacherId,
-            date:startParsed.date,
-            time:startParsed.time||"00:00",
-            duration,
-            topic:summary,
-            homework:"",
-            present:true,
-            mode:"presenza",
-            zoom_account:"",
-          });
-          imported++;
-        } catch(e){ skipped++; }
+          try{
+            await onImportLesson({
+              student_id: student.id,
+              teacher_id: matchedTeacher.id,
+              date: parsed.startDate,
+              time: parsed.startTime,
+              duration: parsed.duration,
+              topic: parsed.summary,
+              homework: "",
+              present: true,
+              mode: parsed.mode,
+              zoom_account: "",
+            });
+            imported++;
+          }catch(e){skipped++;}
+        }
       }
 
-      localStorage.setItem("gc_ical_url",gcUrl.trim());
-      setGcResult({imported,skipped,errors});
+      setGcStatus("done");
+      setGcCount({imported,skipped,errors});
+      setGcMsg(imported>0?`✅ Importate ${imported} nuove lezioni`:"✅ Nessuna nuova lezione da importare");
+
     } catch(e){
-      setGcResult({imported:0,skipped:0,errors:[e.message]});
+      setGcStatus("error");
+      setGcMsg("Errore: "+(e.message||"problema con Google Calendar"));
     }
-    setGcLoading(false);
   };
 
   return (<div style={S.page}>
     <div style={S.pageHeader}>
       <div><h1 style={S.pageTitle}>📅 Calendario</h1><p style={S.pageSub}>{isAdmin?"Vista per insegnante (colori)":`Lezioni di ${user.name}`}</p></div>
-      <div style={{display:"flex",gap:8,alignItems:"center"}}>
+      <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
         {isAdmin&&<select style={{...S.input,width:"auto",minWidth:180}} value={filterT} onChange={e=>setFT(e.target.value)}><option value="all">Tutti gli insegnanti</option>{teacherList.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select>}
-        {isAdmin&&<button style={{...S.btnPrimary,width:"auto",padding:"8px 16px",background:"#4285f4"}} onClick={()=>{setGC(true);setGcResult(null);}}>📥 Importa da Google Calendar</button>}
+        {isAdmin&&(
+          <button
+            style={{...S.btnPrimary,width:"auto",padding:"8px 16px",background:gcStatus==="error"?"#ef4444":gcStatus==="done"?"#10b981":"#4285f4",opacity:gcStatus==="loading"||gcStatus==="syncing"?0.7:1}}
+            disabled={gcStatus==="loading"||gcStatus==="syncing"}
+            onClick={syncGoogleCalendar}
+          >
+            {gcStatus==="loading"||gcStatus==="syncing"?"⏳ Sincronizzazione…":gcStatus==="done"?"✅ Sincronizzato":"🔄 Sincronizza Google Calendar"}
+          </button>
+        )}
         <button style={{...S.btnPrimary,width:"auto",padding:"8px 16px"}} onClick={()=>setNM("add")}>+ Nota</button>
       </div>
     </div>
+
+    {/* Barra stato sincronizzazione */}
+    {gcStatus!=="idle"&&(
+      <div style={{background:gcStatus==="error"?"#fee2e2":gcStatus==="done"?"#f0fdf4":"#eff6ff",border:`1px solid ${gcStatus==="error"?"#fca5a5":gcStatus==="done"?"#86efac":"#93c5fd"}`,borderRadius:12,padding:"12px 18px",marginBottom:16,fontSize:13}}>
+        <div style={{fontWeight:600,color:gcStatus==="error"?"#dc2626":gcStatus==="done"?"#166534":"#1d4ed8",marginBottom:gcCount?.errors?.length>0?6:0}}>{gcMessage}</div>
+        {gcCount?.errors?.length>0&&(<div>
+          <div style={{fontSize:12,color:"#92400e",fontWeight:600,marginBottom:4}}>Lezioni non abbinate ({gcCount.errors.length}):</div>
+          {gcCount.errors.slice(0,5).map((e,i)=><div key={i} style={{fontSize:11,color:"#b45309"}}>• {e}</div>)}
+          {gcCount.errors.length>5&&<div style={{fontSize:11,color:"#9ca3af"}}>…e altri {gcCount.errors.length-5}</div>}
+          <div style={{fontSize:11,color:"#9ca3af",marginTop:4}}>Assicurati che il nome dello studente nel titolo dell'evento corrisponda a quello nel registro.</div>
+        </div>)}
+        {gcStatus==="done"&&<button style={{...S.btnSecondary,marginTop:8,padding:"4px 12px",fontSize:12}} onClick={()=>{setGcStatus("idle");setGcMsg("");setGcCount(null);}}>Chiudi</button>}
+      </div>
+    )}
+
     {isAdmin&&(<div style={{display:"flex",gap:10,marginBottom:18,flexWrap:"wrap"}}>
       {teacherList.map(t=>(<div key={t.id} style={{display:"flex",alignItems:"center",gap:6,background:"white",borderRadius:8,padding:"6px 12px",border:`2px solid ${t.color}30`,fontSize:13}}><span style={{width:10,height:10,borderRadius:"50%",background:t.color,display:"inline-block"}}/><span style={{fontWeight:600,color:t.color}}>{t.name}</span></div>))}
       <div style={{display:"flex",alignItems:"center",gap:6,background:"white",borderRadius:8,padding:"6px 12px",border:"1px solid #f1f5f9",fontSize:13}}><span style={{width:10,height:10,borderRadius:"50%",background:"#94a3b8",display:"inline-block"}}/><span style={{color:"#6b7280"}}>Note personali</span></div>
@@ -957,7 +1036,7 @@ function CalendarPage({user,students,lessons,classLessons,classes,teachers,isAdm
           </div>}
           {selData.indiv.length===0&&selData.cls.length===0?<div style={{textAlign:"center",padding:"16px 0",color:"#9ca3af",fontSize:13}}>Nessuna lezione</div>:<>
             {selData.indiv.length>0&&<><div style={{fontSize:11,fontWeight:700,color:"#9ca3af",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>Individuali</div>
-              {[...selData.indiv].sort((a,b)=>(a.time||"").localeCompare(b.time||"")).map(l=>{const st=students.find(s=>s.id===l.student_id);const t=teachers.find(t=>t.id===l.teacher_id);return<div key={l.id} style={{background:"#f8fafc",borderRadius:10,padding:"10px 12px",marginBottom:8,borderLeft:`3px solid ${tc(l.teacher_id)}`}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}><span style={S.timeBadge}>{l.time}</span><div style={{display:"flex",gap:6,alignItems:"center"}}><span style={{fontSize:11,color:"#6b7280"}}>{l.duration}min</span></div></div><div style={{fontWeight:600,fontSize:13}}>{st?.name||"—"}</div><div style={{fontSize:12,color:"#6b7280"}}>{l.topic}</div>{isAdmin&&<div style={{fontSize:11,color:tc(l.teacher_id),fontWeight:600,marginTop:2}}>👤 {t?.name}</div>}</div>;})}
+              {[...selData.indiv].sort((a,b)=>(a.time||"").localeCompare(b.time||"")).map(l=>{const st=students.find(s=>s.id===l.student_id);const t=teachers.find(t=>t.id===l.teacher_id);return<div key={l.id} style={{background:"#f8fafc",borderRadius:10,padding:"10px 12px",marginBottom:8,borderLeft:`3px solid ${tc(l.teacher_id)}`}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}><span style={S.timeBadge}>{l.time}</span><span style={{fontSize:11,color:"#6b7280"}}>{l.duration}min</span></div><div style={{fontWeight:600,fontSize:13}}>{st?.name||"—"}</div><div style={{fontSize:12,color:"#6b7280"}}>{l.topic}</div>{isAdmin&&<div style={{fontSize:11,color:tc(l.teacher_id),fontWeight:600,marginTop:2}}>👤 {t?.name}</div>}</div>;})}
             </>}
             {selData.cls.length>0&&<><div style={{fontSize:11,fontWeight:700,color:"#9ca3af",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6,marginTop:8}}>Classi</div>
               {[...selData.cls].sort((a,b)=>(a.time||"").localeCompare(b.time||"")).map(l=>{const cls=classes.find(c=>c.id===l.class_id);const t=teachers.find(t=>t.id===l.teacher_id);const att=Object.values(l.attendances||{}).filter(Boolean).length;const tot2=Object.keys(l.attendances||{}).length;return<div key={l.id} style={{background:"#fffbeb",borderRadius:10,padding:"10px 12px",marginBottom:8,borderLeft:`3px solid ${tc(l.teacher_id)}`}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}><span style={S.timeBadge}>{l.time}</span><span style={{fontSize:12,color:"#6b7280"}}>{att}/{tot2} presenti</span></div><div style={{fontWeight:600,fontSize:13}}>{cls?.name||"—"} 👥</div><div style={{fontSize:12,color:"#6b7280"}}>{l.topic}</div>{isAdmin&&<div style={{fontSize:11,color:tc(l.teacher_id),fontWeight:600,marginTop:2}}>👤 {t?.name}</div>}</div>;})}
@@ -967,49 +1046,6 @@ function CalendarPage({user,students,lessons,classLessons,classes,teachers,isAdm
       </div>
     </div>
     {noteModal&&<NoteModal note={noteModal==="add"?{date:today(),text:""}:noteModal} isNew={noteModal==="add"||!noteModal.id} onSave={n=>{noteModal==="add"||!noteModal.id?onAddNote(n):onUpdateNote(n);setNM(null);}} onClose={()=>setNM(null)}/>}
-
-    {/* MODALE IMPORTAZIONE GOOGLE CALENDAR */}
-    {gcModal&&<Overlay onClose={()=>{setGC(false);setGcResult(null);}}>
-      <h2 style={S.modalTitle}>📥 Importa da Google Calendar</h2>
-      <div style={{background:"#eff6ff",borderRadius:10,padding:"12px 16px",marginBottom:16,fontSize:13,color:"#1e40af",lineHeight:1.6}}>
-        <strong>Come trovare il link iCal:</strong><br/>
-        1. Apri <strong>Google Calendar</strong><br/>
-        2. Clicca ⚙️ Impostazioni → seleziona il calendario della scuola<br/>
-        3. Scorri fino a <strong>"Indirizzo segreto in formato iCal"</strong><br/>
-        4. Copia il link e incollalo qui sotto
-      </div>
-      <div style={S.field}>
-        <label style={S.label}>Link iCal segreto del calendario</label>
-        <input style={S.input} value={gcUrl} onChange={e=>setGcUrl(e.target.value)} placeholder="https://calendar.google.com/calendar/ical/..."/>
-        <div style={{fontSize:11,color:"#9ca3af",marginTop:4}}>Il link viene salvato automaticamente per i prossimi utilizzi.</div>
-      </div>
-      <div style={{background:"#f8fafc",borderRadius:10,padding:"12px 16px",marginBottom:16,fontSize:13,color:"#374151"}}>
-        <strong>📋 Come funziona l'importazione:</strong><br/>
-        • Vengono importate solo le lezioni del <strong>mese attualmente visualizzato</strong><br/>
-        • Il nome dello studente viene cercato nel titolo dell'evento<br/>
-        • Le lezioni già presenti nel registro vengono saltate automaticamente<br/>
-        • L'insegnante viene assegnato in base allo studente trovato
-      </div>
-      {gcResult&&(
-        <div style={{background:gcResult.imported>0?"#f0fdf4":"#fff7ed",border:`1px solid ${gcResult.imported>0?"#86efac":"#fed7aa"}`,borderRadius:10,padding:"12px 16px",marginBottom:16,fontSize:13}}>
-          <div style={{fontWeight:700,marginBottom:6,color:gcResult.imported>0?"#166534":"#9a3412"}}>
-            {gcResult.imported>0?`✅ Importate ${gcResult.imported} lezioni`:"⚠️ Nessuna lezione importata"}
-            {gcResult.skipped>0&&<span style={{fontWeight:400,color:"#6b7280"}}> · {gcResult.skipped} saltate</span>}
-          </div>
-          {gcResult.errors.length>0&&<div>
-            <div style={{fontWeight:600,marginBottom:4,color:"#92400e"}}>Lezioni non abbinate:</div>
-            {gcResult.errors.map((e,i)=><div key={i} style={{color:"#b45309",fontSize:12,marginBottom:2}}>• {e}</div>)}
-            <div style={{fontSize:11,color:"#9ca3af",marginTop:6}}>Assicurati che il nome dello studente nel titolo dell'evento corrisponda a quello nel registro.</div>
-          </div>}
-        </div>
-      )}
-      <div style={S.modalActions}>
-        <button style={S.btnSecondary} onClick={()=>{setGC(false);setGcResult(null);}}>Chiudi</button>
-        <button style={{...S.btnPrimary,width:"auto",background:"#4285f4"}} disabled={!gcUrl.trim()||gcLoading} onClick={importFromGoogleCalendar}>
-          {gcLoading?"⏳ Importazione in corso…":"📥 Importa lezioni di "+cur.toLocaleDateString("it-IT",{month:"long",year:"numeric"})}
-        </button>
-      </div>
-    </Overlay>}
   </div>);
 }
 function NoteModal({note,isNew,onSave,onClose}) {
