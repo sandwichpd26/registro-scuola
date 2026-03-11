@@ -1,41 +1,41 @@
 // ════════════════════════════════════════════════════════════════
 //  ENGLISH SCHOOL — REGISTRO ELETTRONICO  (versione Supabase)
+//
+//  SETUP RAPIDO:
+//  1. Crea progetto su supabase.com
+//  2. Vai su SQL Editor e incolla + esegui il file supabase_setup.sql
+//  3. Sostituisci SUPABASE_URL e SUPABASE_ANON_KEY qui sotto
+//  4. npm install   (installa anche @supabase/supabase-js)
+//  5. npm start
 // ════════════════════════════════════════════════════════════════
 
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 // ── ⚙️  CONFIGURA QUI ──────────────────────────────────────────────
-const SUPABASE_URL  = "https://kckgcwaeqoshyyjlyiur.supabase.co"; 
-const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtja2djd2FlcW9zaHl5amx5aXVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMwMjQwNjQsImV4cCI6MjA4ODYwMDA2NH0.YdtDNaig_ScfMqh5iQsncP_inQoBdmXlpb-rSO3GsEc";
+const SUPABASE_URL  = "https://XXXXXXXXXXXXXXXX.supabase.co"; // ← sostituisci
+const SUPABASE_ANON = "eyJ...";                                // ← sostituisci
 // ──────────────────────────────────────────────────────────────────
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON);
 
-// ── HELPERS ──────────────────────────────────────────────────────
+// ── HELPERS (identici all'originale) ──────────────────────────────
 const uid      = () => crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2,18);
 const today    = () => new Date().toISOString().split("T")[0];
 const fmtDate  = d => { if(!d)return""; const [y,m,dd]=d.split("-"); return `${dd}/${m}/${y}`; };
+const LEVELS   = Array.from({length:50},(_,i)=>i+1);
+const DURATIONS= [30,45,60,90,120];
 const T_COLORS = ["#6366f1","#10b981","#f59e0b","#ef4444","#8b5cf6","#06b6d4","#ec4899"];
 
 const pkgRemaining = o => Math.max(0,(o?.package_total||0)-(o?.package_used||0));
 const pkgColor     = o => { const r=pkgRemaining(o); return r<=0?"#ef4444":r<=3?"#f59e0b":"#10b981"; };
 
 // ── SUPABASE DB LAYER ─────────────────────────────────────────────
+// Tutte le chiamate al database sono qui, separate dalla UI.
 const db = {
   async getTeachers()  { const {data,error}=await supabase.from("teachers").select("*").order("name"); if(error)throw error; return data||[]; },
   async upsertTeacher(t) { const {data,error}=await supabase.from("teachers").upsert(t).select().single(); if(error)throw error; return data; },
   async deleteTeacher(id){ const {error}=await supabase.from("teachers").delete().eq("id",id); if(error)throw error; },
-  async updatePassword(id, newPass) { 
-    const { error } = await supabase.from("teachers").update({ password: newPass }).eq("id", id); 
-    if(error) throw error; 
-  },
-  
-  // NUOVA FUNZIONE PASSWORD
-  async updatePassword(id, newPass) { 
-    const {error} = await supabase.from("teachers").update({ password: newPass }).eq("id", id); 
-    if(error) throw error; 
-  },
 
   async getStudents()  { const {data,error}=await supabase.from("students").select("*").order("name"); if(error)throw error; return data||[]; },
   async upsertStudent(s) { const {data,error}=await supabase.from("students").upsert(s).select().single(); if(error)throw error; return data; },
@@ -69,116 +69,11 @@ export default function App() {
   const [page,setPage]                 = useState("login");
   const [loading,setLoading]           = useState(true);
   const [toast,setToast]               = useState(null);
-  
-  // Stati per cambio password
-  const [showProfile, setShowProfile] = useState(false);
-  const [newPassword, setNewPassword] = useState("");
 
   const showToast = useCallback((msg, type="ok") => {
     setToast({msg,type});
     setTimeout(() => setToast(null), 3000);
   }, []);
-
-  const handleUpdatePassword = async () => {
-    if (!newPassword) return;
-    try {
-      await db.updatePassword(currentUser.id, newPassword);
-      showToast("Password aggiornata!");
-      setNewPassword("");
-      setShowProfile(false);
-    } catch (e) {
-      showToast("Errore aggiornamento", "err");
-    }
-  };
-
-  useEffect(() => {
-    db.getTeachers()
-      .then(setTeachers)
-      .catch(() => showToast("Errore database","err"))
-      .finally(() => setLoading(false));
-  }, [showToast]);
-
-  const loadAll = useCallback(async (user) => {
-    setLoading(true);
-    try {
-      const [st,les,cl,cll,nt] = await Promise.all([
-        db.getStudents(),
-        db.getLessons(),
-        db.getClasses(),
-        db.getClassLessons(),
-        db.getNotes(user.id),
-      ]);
-      setStudents(st); setLessons(les); setClasses(cl);
-      setClassLessons(cll); setNotes(nt);
-    } catch(e) {
-      showToast("Errore caricamento dati","err");
-    } finally {
-      setLoading(false);
-    }
-  }, [showToast]);
-
-  const isAdmin = currentUser?.role==="admin";
-
-  return (
-    <div style={S.app}>
-      {toast && <Toast msg={toast.msg} type={toast.type}/>}
-      
-      {!currentUser ? (
-        <LoginScreen teachers={teachers} onLogin={async u => { setCurrentUser(u); setPage("home"); await loadAll(u); }} />
-      ) : (
-        <>
-          <Sidebar user={currentUser} page={page} setPage={setPage} isAdmin={isAdmin}
-            onLogout={()=>{ setCurrentUser(null); setPage("login"); }}
-            onProfile={() => setShowProfile(true)}
-          />
-          <main style={S.main}>
-            {/* ... il resto delle pagine ... */}
-          </main>
-        </>
-      )}
-
-      {/* MODALE CAMBIO PASSWORD */}
-      {showProfile && (
-        <div style={S.overlayBg}>
-          <div style={S.modal}>
-            <h3>Cambia Password</h3>
-            <p style={{fontSize:13,color:"#666"}}>Nuova password per {currentUser.name}</p>
-            <input 
-              type="password" 
-              value={newPassword} 
-              onChange={e => setNewPassword(e.target.value)} 
-              placeholder="Inserisci nuova password"
-              style={S.input}
-            />
-            <div style={{display:'flex', gap:10, marginTop:15}}>
-              <button onClick={handleUpdatePassword} style={S.btnPrimary}>Salva</button>
-              <button onClick={() => setShowProfile(false)} style={S.btnSecondary}>Annulla</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── AGGIUNTA NEL SIDEBAR (da inserire nel componente Sidebar esistente)
-function Sidebar({user,page,setPage,isAdmin,onLogout,onProfile}) {
-  // ... (tutto il resto del codice sidebar)
-  return (
-    <aside style={S.sidebar}>
-      {/* ... nav ... */}
-      <div style={S.sidebarBottom}>
-        <div style={S.userChip}>
-          {/* ... */}
-        </div>
-        <button onClick={onProfile} style={{...S.btnSecondary, marginBottom:5}}>Profilo</button>
-        <button style={S.logoutBtn} onClick={onLogout}>Esci →</button>
-      </div>
-    </aside>
-  );
-}
-
-// ... (Il resto del codice rimane invariato)
 
   // Carica insegnanti al primo avvio (serve per il login)
   useEffect(() => {
@@ -208,18 +103,7 @@ function Sidebar({user,page,setPage,isAdmin,onLogout,onProfile}) {
     }
   }, [showToast]);
 
-  // Realtime: aggiornamenti automatici quando un altro utente salva dati
-  useEffect(() => {
-    if (!currentUser) return;
-    const channels = [
-      supabase.channel("rt_students").on("postgres_changes",{event:"*",schema:"public",table:"students"},     ()=>db.getStudents().then(setStudents)).subscribe(),
-      supabase.channel("rt_lessons").on("postgres_changes",{event:"*",schema:"public",table:"lessons"},       ()=>db.getLessons().then(setLessons)).subscribe(),
-      supabase.channel("rt_classes").on("postgres_changes",{event:"*",schema:"public",table:"classes"},       ()=>db.getClasses().then(setClasses)).subscribe(),
-      supabase.channel("rt_cl").on("postgres_changes",{event:"*",schema:"public",table:"class_lessons"},      ()=>db.getClassLessons().then(setClassLessons)).subscribe(),
-      supabase.channel("rt_teachers").on("postgres_changes",{event:"*",schema:"public",table:"teachers"},     ()=>db.getTeachers().then(setTeachers)).subscribe(),
-    ];
-    return () => channels.forEach(c => supabase.removeChannel(c));
-  }, [currentUser]);
+  // Realtime disabilitato — i dati si aggiornano dopo ogni operazione
 
   const isAdmin          = currentUser?.role==="admin";
   const myStudents       = isAdmin ? students : students.filter(s=>s.teacher_id===currentUser?.id);
