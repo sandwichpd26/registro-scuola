@@ -25,7 +25,7 @@ const today    = () => new Date().toISOString().split("T")[0];
 const fmtDate  = d => { if(!d)return""; const [y,m,dd]=d.split("-"); return `${dd}/${m}/${y}`; };
 const LEVELS   = Array.from({length:50},(_,i)=>i+1);
 const DURATIONS= [30,45,60,90,120];
-const T_COLORS = ["#6366f1","#10b981","#f59e0b","#ef4444","#8b5cf6","#06b6d4","#ec4899"];
+const T_COLORS = ["#6366f1","#8b5cf6","#a855f7","#d946ef","#ec4899","#ef4444","#e11d48","#f97316","#f59e0b","#eab308","#84cc16","#22c55e","#10b981","#14b8a6","#06b6d4","#0ea5e9","#3b82f6","#0284c7","#0891b2","#059669","#15803d","#65a30d","#ca8a04","#dc2626","#7c3aed","#b45309","#78716c","#64748b","#475569","#1e293b"];
 
 const THEMES = {
   indigo: {
@@ -1014,13 +1014,12 @@ function ColorPicker({color,onChange}) {
     <button onClick={()=>setOpen(o=>!o)} title="Cambia colore" style={{width:24,height:24,borderRadius:"50%",background:color,border:"2px solid #e2e8f0",cursor:"pointer",display:"block"}}/>
     {open&&(<>
       <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:999}}/>
-      <div style={{position:"absolute",top:30,left:0,zIndex:1000,background:"white",borderRadius:12,padding:10,boxShadow:"0 8px 30px rgba(0,0,0,0.15)",display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:6,width:180}}>
+      <div style={{position:"absolute",top:30,left:0,zIndex:1000,background:"white",borderRadius:12,padding:10,boxShadow:"0 8px 30px rgba(0,0,0,0.15)",display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:6,width:188}}>
         {T_COLORS.map(c=>(<button key={c} onClick={()=>{onChange(c);setOpen(false);}} style={{width:22,height:22,borderRadius:"50%",background:c,border:color===c?"3px solid #0f172a":"2px solid transparent",cursor:"pointer"}}/>))}
       </div>
     </>)}
   </div>);
 }
-
 // ── AMMINISTRAZIONE — identica all'originale ──────────────────────
 function AdminPage({teachers,students,lessons,classLessons,onAddTeacher,onDeleteTeacher,onUpdateTeacher,onReassignStudent,onArchiveTeacher}) {
   const [tm,setTM]=useState(false);const [confirm,setConfirm]=useState(null);const [confirmArchive,setConfirmArchive]=useState(null);const [rm,setRM]=useState(null);const [editT,setEditT]=useState(null);
