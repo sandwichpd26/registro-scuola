@@ -25,7 +25,17 @@ const today    = () => new Date().toISOString().split("T")[0];
 const fmtDate  = d => { if(!d)return""; const [y,m,dd]=d.split("-"); return `${dd}/${m}/${y}`; };
 const LEVELS   = Array.from({length:50},(_,i)=>i+1);
 const DURATIONS= [30,45,60,90,120];
-const T_COLORS = ["#6366f1","#10b981","#f59e0b","#ef4444","#8b5cf6","#06b6d4","#ec4899"];
+const THEMES = {
+  indigo:  {name:"Indigo",     primary:"#6366f1", sidebar:"#1e1b4b"},
+  violet:  {name:"Viola",      primary:"#7c3aed", sidebar:"#2e1065"},
+  blue:    {name:"Blu",        primary:"#2563eb", sidebar:"#1e3a5f"},
+  teal:    {name:"Verde acqua",primary:"#0d9488", sidebar:"#0f3836"},
+  green:   {name:"Verde",      primary:"#16a34a", sidebar:"#14532d"},
+  rose:    {name:"Rosa",       primary:"#e11d48", sidebar:"#4c0519"},
+  orange:  {name:"Arancione",  primary:"#ea580c", sidebar:"#431407"},
+  slate:   {name:"Grigio",     primary:"#475569", sidebar:"#0f172a"},
+};
+const T_COLORS = ["#6366f1","#8b5cf6","#a855f7","#d946ef","#ec4899","#ef4444","#e11d48","#f97316","#f59e0b","#eab308","#84cc16","#22c55e","#10b981","#14b8a6","#06b6d4","#0ea5e9","#3b82f6","#0284c7","#0891b2","#059669","#15803d","#65a30d","#ca8a04","#dc2626","#7c3aed","#b45309","#78716c","#64748b","#475569","#1e293b"];
 
 const pkgRemaining = o => Math.max(0,(o?.package_total||0)-(o?.package_used||0));
 const pkgColor     = o => { const r=pkgRemaining(o); return r<=0?"#ef4444":r<=3?"#f59e0b":"#10b981"; };
@@ -113,6 +123,9 @@ export default function App() {
   const trashedStudents  = isAdmin ? students.filter(s=>s.deleted) : [];
   const safePage         = (!isAdmin&&["archive","admin","trash"].includes(page))?"home":page;
   const [profileModal,setProfileModal]=useState(false);
+  const [themeKey,setThemeKey]=useState(()=>localStorage.getItem("app_theme")||"indigo");
+  const th=THEMES[themeKey]||THEMES.indigo;
+  const changeTheme=(key)=>{setThemeKey(key);localStorage.setItem("app_theme",key);};
   const myClasses        = currentUser?(isAdmin?classes:classes.filter(c=>c.teacher_id===currentUser.id)):[];
 
   // ── CRUD — ogni operazione aggiorna lo state ottimisticamente
@@ -308,19 +321,30 @@ export default function App() {
           setCurrentUser(null); setPage("login");
           setStudents([]); setLessons([]); setClasses([]); setClassLessons([]); setNotes([]);
         }}
-        archivedCount={0} trashedCount={isAdmin?trashedStudents.length:0} alertCount={alertCount} onProfile={()=>setProfileModal(true)}
+        archivedCount={0} trashedCount={isAdmin?trashedStudents.length:0} alertCount={alertCount} onProfile={()=>setProfileModal(true)} theme={th} themeKey={themeKey} onChangeTheme={changeTheme}
       />
       <main style={S.main}><div className="page-anim" key={safePage}>{pages[safePage]||pages.home}</div></main>
-      {profileModal&&<ProfileModal user={currentUser} onSave={async(pw)=>{try{await db.upsertTeacher({id:currentUser.id,password:pw});showToast("Password aggiornata");}catch(e){showToast("Errore","err");}setProfileModal(false);}} onClose={()=>setProfileModal(false)}/>}
+      {profileModal&&<ProfileModal user={currentUser} themeKey={themeKey} onChangeTheme={changeTheme} onSave={async(pw)=>{try{await db.upsertTeacher({id:currentUser.id,password:pw});showToast("Password aggiornata");}catch(e){showToast("Errore","err");}setProfileModal(false);}} onClose={()=>setProfileModal(false)}/>}
     </div>
   );
 }
 
-function ProfileModal({user,onSave,onClose}) {
+function ProfileModal({user,themeKey,onChangeTheme,onSave,onClose}) {
   const [pw,setPw]=useState("");const [pw2,setPw2]=useState("");const [err,setErr]=useState("");
   const save=()=>{if(pw.length<4){setErr("Minimo 4 caratteri");return;}if(pw!==pw2){setErr("Le password non coincidono");return;}onSave(pw);};
   return (<Overlay onClose={onClose}><h2 style={S.modalTitle}>👤 Il tuo profilo</h2>
     <div style={{background:"#f0fdf4",borderRadius:10,padding:"12px 16px",marginBottom:16,fontSize:14}}><strong>{user.name}</strong><br/><span style={{color:"#6b7280"}}>{user.email}</span></div>
+    {onChangeTheme&&<div style={{marginBottom:20}}>
+      <div style={{fontWeight:700,fontSize:14,marginBottom:12,color:"#374151"}}>🎨 Tema colore</div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:10}}>
+        {Object.entries(THEMES).map(([key,t])=>(
+          <button key={key} onClick={()=>onChangeTheme(key)} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 14px",borderRadius:10,border:themeKey===key?"2px solid #0f172a":"2px solid #e2e8f0",background:themeKey===key?"#f8fafc":"white",cursor:"pointer",fontSize:13,fontWeight:themeKey===key?700:400}}>
+            <span style={{width:16,height:16,borderRadius:"50%",background:t.primary,display:"inline-block",flexShrink:0}}/>
+            {t.name}
+          </button>
+        ))}
+      </div>
+    </div>}
     <div style={{fontWeight:700,fontSize:14,marginBottom:12,color:"#374151"}}>🔒 Cambia password</div>
     {err&&<div style={S.error}>{err}</div>}
     <div style={S.field}><label style={S.label}>Nuova password</label><input type="password" style={S.input} value={pw} onChange={e=>{setPw(e.target.value);setErr("");}}/></div>
@@ -370,11 +394,11 @@ function LoginScreen({teachers,onLogin}) {
 }
 
 // ── SIDEBAR — identica all'originale ─────────────────────────────
-function Sidebar({user,page,setPage,isAdmin,onLogout,onProfile,archivedCount,trashedCount,alertCount}) {
+function Sidebar({user,page,setPage,isAdmin,onLogout,onProfile,archivedCount,trashedCount,alertCount,theme,themeKey,onChangeTheme}) {
   const items=[{id:"home",icon:"🏠",label:"Dashboard"},{id:"students",icon:"👤",label:"Studenti & Classi"},{id:"lessons",icon:"📚",label:"Lezioni Individuali"},{id:"classes",icon:"👥",label:"Lezioni di Classe"},{id:"calendar",icon:"📅",label:"Calendario"},{id:"reports",icon:"📊",label:"Report",badge:alertCount>0?`⚠️ ${alertCount}`:null,warn:true},{id:"report_s",icon:"📋",label:"Report Studenti"},...(isAdmin?[{id:"archive",icon:"🗄️",label:"Archivio",badge:archivedCount>0?archivedCount:null},{id:"trash",icon:"🗑️",label:"Cestino",badge:trashedCount>0?trashedCount:null},{id:"admin",icon:"⚙️",label:"Amministrazione"}]:[])];
   return (<aside style={S.sidebar}>
     <div style={S.sidebarTop}><div style={S.sidebarLogo}>🎓</div><div><div style={S.sidebarBrand}>English School</div><div style={{color:"#475569",fontSize:10}}>Registro</div></div></div>
-    <nav style={S.nav}>{items.map(item=>(<button key={item.id} className="nav-item" style={{...S.navItem,...(page===item.id?S.navItemActive:{})}} onClick={()=>setPage(item.id)}><span style={S.navIcon}>{item.icon}</span><span style={{flex:1}}>{item.label}</span>{item.badge&&<span style={{...S.badge,...(item.warn?{background:"#ef444420",color:"#ef4444"}:{})}}>{item.badge}</span>}</button>))}</nav>
+    <nav style={{...S.nav,background:theme?.sidebar||"#0f172a"}}>{items.map(item=>(<button key={item.id} className="nav-item" style={{...S.navItem,...(page===item.id?{...S.navItemActive,background:theme?.primary||"#6366f1"}:{})}} onClick={()=>setPage(item.id)}><span style={S.navIcon}>{item.icon}</span><span style={{flex:1}}>{item.label}</span>{item.badge&&<span style={{...S.badge,...(item.warn?{background:"#ef444420",color:"#ef4444"}:{})}}>{item.badge}</span>}</button>))}</nav>
     <div style={S.sidebarBottom}><div style={{...S.userChip,cursor:"pointer"}} onClick={onProfile}><div style={S.avatar}>{user.name[0]}</div><div><div style={S.userName}>{user.name}</div><div style={S.userRole}>{user.role==="admin"?"Amministratore":"Insegnante"}</div></div></div><button style={{...S.logoutBtn,marginBottom:4}} onClick={onProfile}>👤 Profilo</button><button style={S.logoutBtn} onClick={onLogout}>Esci →</button></div>
   </aside>);
 }
@@ -910,6 +934,18 @@ function RestoreModal({student,teachers,onRestore,onClose}) {
   </Overlay>);
 }
 
+function ColorPicker({color,onChange}) {
+  const [open,setOpen]=useState(false);
+  return (<div style={{position:"relative",display:"inline-block"}}>
+    <button onClick={()=>setOpen(o=>!o)} title="Cambia colore" style={{width:24,height:24,borderRadius:"50%",background:color||"#6366f1",border:"2px solid #e2e8f0",cursor:"pointer",display:"block"}}/>
+    {open&&(<>
+      <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:999}}/>
+      <div style={{position:"absolute",top:30,left:0,zIndex:1000,background:"white",borderRadius:12,padding:10,boxShadow:"0 8px 30px rgba(0,0,0,0.15)",display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:6,width:192}}>
+        {T_COLORS.map(c=>(<button key={c} onClick={()=>{onChange(c);setOpen(false);}} style={{width:22,height:22,borderRadius:"50%",background:c,border:(color===c)?"3px solid #0f172a":"2px solid transparent",cursor:"pointer",padding:0}}/>))}
+      </div>
+    </>)}
+  </div>);
+}
 // ── AMMINISTRAZIONE — identica all'originale ──────────────────────
 function AdminPage({teachers,students,lessons,classLessons,onAddTeacher,onDeleteTeacher,onUpdateTeacher,onReassignStudent}) {
   const [tm,setTM]=useState(false);const [confirm,setConfirm]=useState(null);const [rm,setRM]=useState(null);const [editT,setEditT]=useState(null);
@@ -917,13 +953,13 @@ function AdminPage({teachers,students,lessons,classLessons,onAddTeacher,onDelete
   return (<div style={S.page}>
     <div style={S.pageHeader}><div><h1 style={S.pageTitle}>Amministrazione</h1><p style={S.pageSub}>Gestione insegnanti e riassegnazioni</p></div><button style={{...S.btnPrimary,width:"auto"}} onClick={()=>setTM(true)}>+ Nuovo Insegnante</button></div>
     <div style={S.section}><h2 style={S.sectionTitle}>Insegnanti</h2>
-      <div style={S.tableWrap}><table style={S.table}><thead><tr><th style={S.th}>Nome</th><th style={S.th}>Email</th><th style={S.th}>Telefono</th><th style={S.th}>Colore</th><th style={S.th}>Studenti</th><th style={S.th}>Lezioni</th><th style={S.th}></th></tr></thead>
+      <div style={{...S.tableWrap,overflow:"visible"}}><table style={S.table}><thead><tr><th style={S.th}>Nome</th><th style={S.th}>Email</th><th style={S.th}>Telefono</th><th style={S.th}>Colore</th><th style={S.th}>Studenti</th><th style={S.th}>Lezioni</th><th style={S.th}></th></tr></thead>
         <tbody>{teachers.filter(t=>t.role==="teacher").map(t=>{
           const lCount=lessons.filter(l=>l.teacher_id===t.id).length+classLessons.filter(l=>l.teacher_id===t.id).length;
           return(<tr key={t.id} style={S.tr}>
             <td style={S.td}><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{width:10,height:10,borderRadius:"50%",background:t.color,display:"inline-block"}}/><strong>{t.name}</strong></div></td>
             <td style={S.td}>{t.email}</td><td style={S.td}>{t.phone||"—"}</td>
-            <td style={S.td}><div style={{display:"flex",gap:4}}>{T_COLORS.map(c=><button key={c} onClick={()=>onUpdateTeacher({...t,color:c})} style={{width:18,height:18,borderRadius:"50%",background:c,border:t.color===c?"2px solid #0f172a":"2px solid transparent",cursor:"pointer"}}/> )}</div></td>
+            <td style={S.td}><ColorPicker color={t.color} onChange={c=>onUpdateTeacher({...t,color:c})}/></td>
             <td style={S.td}>{students.filter(s=>s.teacher_id===t.id&&s.active).length}</td>
             <td style={S.td}>{lCount}</td>
             <td style={S.td}><div style={{display:"flex",gap:4}}><button style={S.iconBtn} onClick={()=>setEditT(t)}>✏️</button><button style={{...S.iconBtn,color:"#ef4444"}} onClick={()=>setConfirm(t.id)}>🗑️</button></div></td>
