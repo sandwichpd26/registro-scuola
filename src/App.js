@@ -25,6 +25,16 @@ const today    = () => new Date().toISOString().split("T")[0];
 const fmtDate  = d => { if(!d)return""; const [y,m,dd]=d.split("-"); return `${dd}/${m}/${y}`; };
 const LEVELS   = Array.from({length:50},(_,i)=>i+1);
 const DURATIONS= [30,45,60,90,120];
+const THEMES = {
+  indigo:  {name:"Indigo",    primary:"#6366f1", accent:"#6366f1", sidebar:"#1e1b4b", sidebarText:"#e0e7ff"},
+  violet:  {name:"Viola",     primary:"#7c3aed", accent:"#7c3aed", sidebar:"#2e1065", sidebarText:"#ede9fe"},
+  blue:    {name:"Blu",       primary:"#2563eb", accent:"#2563eb", sidebar:"#1e3a5f", sidebarText:"#dbeafe"},
+  teal:    {name:"Verde acqua",primary:"#0d9488",accent:"#0d9488", sidebar:"#0f3836", sidebarText:"#ccfbf1"},
+  green:   {name:"Verde",     primary:"#16a34a", accent:"#16a34a", sidebar:"#14532d", sidebarText:"#dcfce7"},
+  rose:    {name:"Rosa",      primary:"#e11d48", accent:"#e11d48", sidebar:"#4c0519", sidebarText:"#ffe4e6"},
+  orange:  {name:"Arancione", primary:"#ea580c", accent:"#ea580c", sidebar:"#431407", sidebarText:"#ffedd5"},
+  slate:   {name:"Grigio",    primary:"#475569", accent:"#6366f1", sidebar:"#0f172a", sidebarText:"#e2e8f0"},
+};
 const T_COLORS = ["#6366f1","#10b981","#f59e0b","#ef4444","#8b5cf6","#06b6d4","#ec4899"];
 
 const pkgRemaining = o => Math.max(0,(o?.package_total||0)-(o?.package_used||0));
@@ -113,6 +123,9 @@ export default function App() {
   const trashedStudents  = isAdmin ? students.filter(s=>s.deleted) : [];
   const safePage         = (!isAdmin&&["archive","admin","trash"].includes(page))?"home":page;
   const [profileModal,setProfileModal]=useState(false);
+  const [themeKey,setThemeKey]=useState(()=>localStorage.getItem("app_theme")||"indigo");
+  const th=THEMES[themeKey]||THEMES.indigo;
+  const changeTheme=(key)=>{setThemeKey(key);localStorage.setItem("app_theme",key);};
   const myClasses        = currentUser?(isAdmin?classes:classes.filter(c=>c.teacher_id===currentUser.id)):[];
 
   // ── CRUD — ogni operazione aggiorna lo state ottimisticamente
@@ -308,7 +321,7 @@ export default function App() {
           setCurrentUser(null); setPage("login");
           setStudents([]); setLessons([]); setClasses([]); setClassLessons([]); setNotes([]);
         }}
-        archivedCount={isAdmin?archivedStudents.length:0} trashedCount={isAdmin?trashedStudents.length:0} alertCount={alertCount} onProfile={()=>setProfileModal(true)}
+        archivedCount={isAdmin?archivedStudents.length:0} trashedCount={isAdmin?trashedStudents.length:0} alertCount={alertCount} onProfile={()=>setProfileModal(true)} theme={th} themeKey={themeKey} onChangeTheme={changeTheme}
       />
       <main style={S.main}><div className="page-anim" key={safePage}>{pages[safePage]||pages.home}</div></main>
       {profileModal&&<ProfileModal user={currentUser} onSave={async(pw)=>{try{await db.upsertTeacher({id:currentUser.id,password:pw});showToast("Password aggiornata");}catch(e){showToast("Errore","err");}setProfileModal(false);}} onClose={()=>setProfileModal(false)}/>}
@@ -370,12 +383,22 @@ function LoginScreen({teachers,onLogin}) {
 }
 
 // ── SIDEBAR — identica all'originale ─────────────────────────────
-function Sidebar({user,page,setPage,isAdmin,onLogout,onProfile,archivedCount,trashedCount,alertCount}) {
+function Sidebar({user,page,setPage,isAdmin,onLogout,onProfile,archivedCount,trashedCount,alertCount,theme,themeKey,onChangeTheme}) {
   const items=[{id:"home",icon:"🏠",label:"Dashboard"},{id:"students",icon:"👤",label:"Studenti & Classi"},{id:"lessons",icon:"📚",label:"Lezioni Individuali"},{id:"classes",icon:"👥",label:"Lezioni di Classe"},{id:"calendar",icon:"📅",label:"Calendario"},{id:"reports",icon:"📊",label:"Report",badge:alertCount>0?`⚠️ ${alertCount}`:null,warn:true},{id:"report_s",icon:"📋",label:"Report Studenti"},...(isAdmin?[{id:"archive",icon:"🗄️",label:"Archivio",badge:archivedCount>0?archivedCount:null},{id:"trash",icon:"🗑️",label:"Cestino",badge:trashedCount>0?trashedCount:null},{id:"admin",icon:"⚙️",label:"Amministrazione"}]:[])];
   return (<aside style={S.sidebar}>
     <div style={S.sidebarTop}><div style={S.sidebarLogo}>🎓</div><div><div style={S.sidebarBrand}>English School</div><div style={{color:"#475569",fontSize:10}}>Registro</div></div></div>
     <nav style={S.nav}>{items.map(item=>(<button key={item.id} className="nav-item" style={{...S.navItem,...(page===item.id?S.navItemActive:{})}} onClick={()=>setPage(item.id)}><span style={S.navIcon}>{item.icon}</span><span style={{flex:1}}>{item.label}</span>{item.badge&&<span style={{...S.badge,...(item.warn?{background:"#ef444420",color:"#ef4444"}:{})}}>{item.badge}</span>}</button>))}</nav>
-    <div style={S.sidebarBottom}><div style={{...S.userChip,cursor:"pointer"}} onClick={onProfile}><div style={S.avatar}>{user.name[0]}</div><div><div style={S.userName}>{user.name}</div><div style={S.userRole}>{user.role==="admin"?"Amministratore":"Insegnante"}</div></div></div><button style={{...S.logoutBtn,marginBottom:4}} onClick={onProfile}>👤 Profilo</button><button style={S.logoutBtn} onClick={onLogout}>Esci →</button></div>
+    <div style={S.sidebarBottom}><div style={{...S.userChip,cursor:"pointer"}} onClick={onProfile}><div style={S.avatar}>{user.name[0]}</div><div><div style={S.userName}>{user.name}</div><div style={S.userRole}>{user.role==="admin"?"Amministratore":"Insegnante"}</div></div></div><button style={{...S.logoutBtn,marginBottom:4}} onClick={onProfile}>👤 Profilo</button>
+    <div style={{padding:"6px 12px 8px"}}>
+      <div style={{fontSize:10,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>Tema colore</div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+        {Object.entries(THEMES).map(([key,t])=>(
+          <button key={key} onClick={()=>onChangeTheme(key)} title={t.name}
+            style={{width:18,height:18,borderRadius:"50%",background:t.primary,border:themeKey===key?"2.5px solid white":"2px solid transparent",cursor:"pointer",padding:0}}/>
+        ))}
+      </div>
+    </div>
+    <button style={S.logoutBtn} onClick={onLogout}>Esci →</button></div>
   </aside>);
 }
 
