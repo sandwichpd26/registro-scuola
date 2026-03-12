@@ -812,12 +812,12 @@ function ReportsPage({user,students,classes,lessons,classLessons,teachers,isAdmi
 
 // ── REPORT STUDENTI ──────────────────────────────────────────────
 function StudentReportPage({user,students,lessons,isAdmin}) {
-  const [fStudent,setFStudent]=useState("");const [fYear,setFYear]=useState("");const [fMonth,setFMonth]=useState("");const [viewMode,setVM]=useState("month");
+  const [fStudent,setFStudent]=useState("");const [fYear,setFYear]=useState("");const [fMonth,setFMonth]=useState("");
   const myStudents=isAdmin?students:students.filter(s=>s.teacher_id===user.id);
   const myLessons=isAdmin?lessons:lessons.filter(l=>l.teacher_id===user.id);
   const years=[...new Set(myLessons.map(l=>l.date.slice(0,4)))].sort().reverse();
   const months=[...new Set(myLessons.filter(l=>!fYear||l.date.startsWith(fYear)).map(l=>l.date.slice(0,7)))].sort().reverse();
-  const selStudent=myStudents.find(s=>s.id===fStudent);
+  
   const filteredLessons=myLessons.filter(l=>
     (!fStudent||l.student_id===fStudent)&&
     (!fYear||l.date.startsWith(fYear))&&
