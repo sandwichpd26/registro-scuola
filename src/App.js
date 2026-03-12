@@ -226,16 +226,12 @@ export default function App() {
   const addNewPackage = async (sid, newTotal) => {
     const s = students.find(x=>x.id===sid);
     if(!s) return;
-    const histEntry = {
-      package_total: s.package_total,
-      package_used: s.package_used,
-      closed_at: today(),
-    };
+    const histEntry = {package_total:s.package_total, package_used:s.package_used, closed_at:today()};
     const newHistory = [...(s.package_history||[]), histEntry];
-    const lessonsSinceStart = lessons.filter(l=>l.student_id===sid).length;
+    const totalLessons = lessons.filter(l=>l.student_id===sid).length;
     const prevUsed = newHistory.reduce((acc,h)=>acc+(h.package_used||0),0);
-    const newUsed = Math.max(0, lessonsSinceStart - prevUsed);
-    const updated = {...s, package_total:newTotal, package_used:newUsed, package_history:newHistory};
+    const newUsed = Math.max(0, totalLessons - prevUsed + histEntry.package_used);
+    const updated = {...s, package_total:newTotal, package_used:0, package_history:newHistory};
     setStudents(p=>p.map(x=>x.id===sid?updated:x));
     try { await db.upsertStudent(updated); showToast("Nuovo pacchetto aggiunto ✓"); }
     catch(e) { showToast("Errore salvataggio","err"); }
@@ -298,6 +294,12 @@ export default function App() {
     setLessons(p=>[obj,...p]); bump(l.student_id,1);
     try { await db.upsertLesson(obj); showToast("Lezione registrata ✓"); }
     catch(e) { setLessons(p=>p.filter(x=>x.id!==obj.id)); showToast("Errore salvataggio","err"); }
+  };
+  const addLessonAsAdmin = async l => {
+    const obj={...l,id:uid()};
+    setLessons(p=>[obj,...p]); bump(l.student_id,1);
+    try { await db.upsertLesson(obj); }
+    catch(e) { setLessons(p=>p.filter(x=>x.id!==obj.id)); throw e; }
   };
   const addLessonAsAdmin = async l => {
     const obj={...l,id:uid()};
@@ -385,7 +387,7 @@ export default function App() {
 
   const pages = {
     home:     <HomePage     user={currentUser} students={myStudents} lessons={lessons} classLessons={classLessons} classes={myClasses} teachers={teachers} setPage={setPage} isAdmin={isAdmin}/>,
-    students: <StudentsPage user={currentUser} students={allActiveStudents} classes={myClasses} teachers={teachers} lessons={lessons} classLessons={classLessons} isAdmin={isAdmin} onAdd={addStudent} onUpdate={updateStudent} onArchive={archiveStudent} onTrash={trashStudent}/>,
+    students: <StudentsPage user={currentUser} students={allActiveStudents} classes={myClasses} teachers={teachers} lessons={lessons} classLessons={classLessons} isAdmin={isAdmin} onAdd={addStudent} onUpdate={updateStudent} onArchive={archiveStudent} onTrash={trashStudent} onNewPackage={addNewPackage}/>,
     lessons:  <LessonsPage  user={currentUser} students={activeStudents} lessons={lessons} teachers={teachers} isAdmin={isAdmin} onAdd={addLesson} onAddRecurring={addRecurringLessons} onUpdate={updateLesson} onDelete={deleteLesson}/>,
     classes:  <ClassesPage  user={currentUser} students={allActiveStudents} classes={myClasses} classLessons={myClassLessons} teachers={teachers} isAdmin={isAdmin} onAddClass={addClass} onUpdateClass={updateClass} onDeleteClass={deleteClass} onAddClassLesson={addClassLesson} onUpdateClassLesson={updateClassLesson} onDeleteClassLesson={deleteClassLesson}/>,
     calendar: <CalendarPage user={currentUser} students={myStudents} lessons={lessons} classLessons={classLessons} classes={myClasses} teachers={teachers} isAdmin={isAdmin} notes={myNotes} onAddNote={addNote} onUpdateNote={updateNote} onDeleteNote={deleteNote} onImportLesson={addLessonAsAdmin} allStudents={students} allTeachers={teachers}/>,
@@ -553,9 +555,8 @@ function StudentsPage({user,students,classes,teachers,lessons,classLessons,isAdm
   const exportCSV=()=>{
     const rows=[["Nome","Insegnante","Livello","Email","Telefono","Azienda","Pacchetto Tot.","Svolte","Rimaste","Data Iscrizione","Note"]];
     fS.forEach(s=>{const t=teachers.find(x=>x.id===s.teacher_id);rows.push([s.name,t?.name||"",s.level,s.email||"",s.phone||"",s.company||"",s.package_total,s.package_used,pkgRemaining(s),s.enrollment_date||"",s.notes||""]);});
-    const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("
-");
-    const a=document.createElement("a");a.href="data:text/csv;charset=utf-8,﻿"+encodeURIComponent(csv);a.download="studenti.csv";a.click();
+    const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
+    const a=document.createElement("a");a.href="data:text/csv;charset=utf-8,\uFEFF"+encodeURIComponent(csv);a.download="studenti.csv";a.click();
   };
   return (<div style={S.page}>
     <div style={S.pageHeader}><div><h1 style={S.pageTitle}>Studenti & Classi</h1><p style={S.pageSub}>{students.length} studenti · {classes.length} classi</p></div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{isAdmin&&<button style={{...S.btnPrimary,width:"auto",background:"#10b981"}} onClick={exportCSV}>📥 Esporta CSV</button>}{isAdmin&&<button style={{...S.btnPrimary,width:"auto"}} onClick={()=>setEdit("add")}>+ Nuovo Studente</button>}</div></div>
@@ -601,7 +602,7 @@ function StudentModal({user,teachers,student,onSave,onClose}) {
     <div style={S.fieldRow}><div style={S.field}><label style={S.label}>Email</label><input style={S.input} type="email" value={form.email||""} onChange={e=>set("email",e.target.value)} placeholder="studente@email.it"/></div><div style={S.field}><label style={S.label}>Data iscrizione</label><input style={S.input} type="date" value={form.enrollment_date||""} onChange={e=>set("enrollment_date",e.target.value)}/></div></div>
     <div style={S.field}><label style={S.label}>Azienda</label><input style={S.input} value={form.company||""} onChange={e=>set("company",e.target.value)} placeholder="Es. Acme Srl (opzionale)"/></div>
     {user.role==="admin"&&<div style={{background:"#f0f9ff",borderRadius:10,padding:"10px 14px",marginBottom:14}}><label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:13,fontWeight:600,color:"#0369a1"}}><input type="checkbox" checked={form.is_class_student||false} onChange={e=>set("is_class_student",e.target.checked)}/> 👥 Studente di classe aziendale (non compare nelle lezioni individuali)</label></div>}
-    <div style={S.fieldRow}><div style={S.field}><label style={S.label}>Lezioni pacchetto</label><input type="number" min="1" style={S.input} value={form.package_total||10} onChange={e=>set("package_total",Number(e.target.value))}/></div><div style={S.field}><label style={S.label}>Già svolte</label><input type="number" min="0" style={S.input} value={form.package_used||0} onChange={e=>set("package_used",Number(e.target.value))}/></div></div>
+    <div style={S.fieldRow}><div style={S.field}><label style={S.label}>Lezioni pacchetto</label><input type="number" min="1" style={S.input} value={form.package_total||10} onChange={e=>set("package_total",Number(e.target.value))}/></div><div style={S.field}><label style={S.label}>Già usate</label><input type="number" min="0" style={S.input} value={form.package_used||0} onChange={e=>set("package_used",Number(e.target.value))}/></div></div>
     {user.role==="admin"&&<div style={S.field}><label style={S.label}>Insegnante</label><select style={S.input} value={form.teacher_id||""} onChange={e=>set("teacher_id",e.target.value)}><option value="">— Seleziona —</option>{teachers.filter(t=>t.role==="teacher").map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></div>}
     <div style={S.field}><label style={S.label}>Note</label><textarea style={{...S.input,height:72,resize:"vertical"}} value={form.notes||""} onChange={e=>set("notes",e.target.value)}/></div>
     <div style={S.modalActions}><button style={S.btnSecondary} onClick={onClose}>Annulla</button><button style={{...S.btnPrimary,width:"auto"}} disabled={!form.name} onClick={()=>onSave(form)}>{student?"Salva Modifiche":"Aggiungi Studente"}</button></div>
@@ -614,22 +615,23 @@ function StudentDetailModal({student,lessons,isAdmin,onNewPackage,onClose}) {
   const [newPkgModal,setNewPkgModal]=useState(false);
   const [newPkgTotal,setNewPkgTotal]=useState(10);
   const history=student.package_history||[];
-  const fields=[["Livello",`Livello ${student.level}`],["Telefono",student.phone||"—"],["Email",student.email||"—"],["Azienda",student.company||"—"],..( student.enrollment_date?[["Iscrizione",fmtDate(student.enrollment_date)]]:[] ),["Note",student.notes||"—"]];
+  const infoFields=[["Livello",`Livello ${student.level}`],["Telefono",student.phone||"—"],["Email",student.email||"—"],["Azienda",student.company||"—"],[" Note",student.notes||"—"]];
+  if(student.enrollment_date) infoFields.splice(2,0,["Iscrizione",fmtDate(student.enrollment_date)]);
   return (<Overlay onClose={onClose} wide>
     <h2 style={S.modalTitle}>Scheda: {student.name}</h2>
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>{fields.map(([k,v])=>(<div key={k} style={{background:"#f9fafb",borderRadius:8,padding:"10px 14px"}}><div style={{fontSize:11,color:"#9ca3af",marginBottom:2}}>{k}</div><div style={{fontSize:13,fontWeight:600,wordBreak:"break-all"}}>{v}</div></div>))}</div>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>{infoFields.map(([k,v])=>(<div key={k} style={{background:"#f9fafb",borderRadius:8,padding:"10px 14px"}}><div style={{fontSize:11,color:"#9ca3af",marginBottom:2}}>{k.trim()}</div><div style={{fontSize:13,fontWeight:600,wordBreak:"break-all"}}>{v}</div></div>))}</div>
     <div style={{background:"#f0fdf4",borderRadius:10,padding:"10px 14px",marginBottom:10,fontSize:13,color:"#166534",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
       <span>📦 <strong>{student.package_used}/{student.package_total}</strong> lezioni · <strong style={{color:pkgRemaining(student)<=3?"#ef4444":"#10b981"}}>{pkgRemaining(student)} rimaste</strong></span>
-      {isAdmin&&<button style={{...S.btnSm,background:"#6366f120",color:"#6366f1",border:"1px solid #6366f130"}} onClick={()=>setNewPkgModal(true)}>📦 Nuovo pacchetto</button>}
+      {isAdmin&&<button style={{...S.btnSm,background:"#6366f120",color:"#6366f1",border:"1px solid #6366f130",cursor:"pointer"}} onClick={()=>setNewPkgModal(true)}>📦 Nuovo pacchetto</button>}
     </div>
     {history.length>0&&<div style={{marginBottom:12}}>
-      <button onClick={()=>setShowHistory(h=>!h)} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:"#6b7280",padding:"4px 0",fontWeight:600}}>
-        {showHistory?"▲":"▶"} Storico pacchetti ({history.length})
+      <button onClick={()=>setShowHistory(h=>!h)} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:"#6b7280",padding:"4px 0",fontWeight:600,display:"flex",alignItems:"center",gap:4}}>
+        <span>{showHistory?"▲":"▶"}</span> Storico pacchetti ({history.length})
       </button>
       {showHistory&&<div style={{background:"#f8fafc",borderRadius:10,padding:10,marginTop:6}}>
-        {history.map((h,i)=><div key={i} style={{display:"flex",gap:12,fontSize:12,padding:"5px 0",borderBottom:i<history.length-1?"1px solid #f1f5f9":"none"}}>
-          <span style={{color:"#9ca3af",minWidth:80}}>{h.closed_at?fmtDate(h.closed_at):"—"}</span>
-          <span>Pacchetto da <strong>{h.package_total}</strong> lezioni · <strong>{h.package_used}</strong> svolte</span>
+        {history.map((h,i)=><div key={i} style={{display:"flex",gap:12,fontSize:12,padding:"6px 0",borderBottom:i<history.length-1?"1px solid #f1f5f9":"none",color:"#374151"}}>
+          <span style={{color:"#9ca3af",minWidth:90}}>{h.closed_at?fmtDate(h.closed_at):"—"}</span>
+          <span>Pacchetto da <strong>{h.package_total}</strong> · <strong>{h.package_used}</strong> svolte</span>
         </div>)}
       </div>}
     </div>}
@@ -639,8 +641,8 @@ function StudentDetailModal({student,lessons,isAdmin,onNewPackage,onClose}) {
     <div style={{marginTop:16,textAlign:"right"}}><button style={S.btnSecondary} onClick={onClose}>Chiudi</button></div>
     {newPkgModal&&<Overlay onClose={()=>setNewPkgModal(false)}>
       <h2 style={S.modalTitle}>📦 Nuovo pacchetto</h2>
-      <p style={{fontSize:13,color:"#6b7280",marginBottom:16}}>Il pacchetto attuale ({student.package_used}/{student.package_total}) verrà archiviato nello storico.</p>
-      <div style={S.field}><label style={S.label}>Numero di lezioni del nuovo pacchetto</label><input type="number" min="1" style={S.input} value={newPkgTotal} onChange={e=>setNewPkgTotal(Number(e.target.value))}/></div>
+      <p style={{fontSize:13,color:"#6b7280",marginBottom:16}}>Il pacchetto attuale ({student.package_used}/{student.package_total}) verrà salvato nello storico.</p>
+      <div style={S.field}><label style={S.label}>Numero lezioni del nuovo pacchetto</label><input type="number" min="1" style={S.input} value={newPkgTotal} onChange={e=>setNewPkgTotal(Number(e.target.value))}/></div>
       <div style={S.modalActions}><button style={S.btnSecondary} onClick={()=>setNewPkgModal(false)}>Annulla</button><button style={{...S.btnPrimary,width:"auto"}} onClick={()=>{onNewPackage(student.id,newPkgTotal);setNewPkgModal(false);onClose();}}>Conferma</button></div>
     </Overlay>}
   </Overlay>);
