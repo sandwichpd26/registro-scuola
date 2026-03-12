@@ -25,16 +25,6 @@ const today    = () => new Date().toISOString().split("T")[0];
 const fmtDate  = d => { if(!d)return""; const [y,m,dd]=d.split("-"); return `${dd}/${m}/${y}`; };
 const LEVELS   = Array.from({length:50},(_,i)=>i+1);
 const DURATIONS= [30,45,60,90,120];
-const THEMES = {
-  indigo:  {name:"Indigo",    primary:"#6366f1", accent:"#6366f1", sidebar:"#1e1b4b", sidebarText:"#e0e7ff"},
-  violet:  {name:"Viola",     primary:"#7c3aed", accent:"#7c3aed", sidebar:"#2e1065", sidebarText:"#ede9fe"},
-  blue:    {name:"Blu",       primary:"#2563eb", accent:"#2563eb", sidebar:"#1e3a5f", sidebarText:"#dbeafe"},
-  teal:    {name:"Verde acqua",primary:"#0d9488",accent:"#0d9488", sidebar:"#0f3836", sidebarText:"#ccfbf1"},
-  green:   {name:"Verde",     primary:"#16a34a", accent:"#16a34a", sidebar:"#14532d", sidebarText:"#dcfce7"},
-  rose:    {name:"Rosa",      primary:"#e11d48", accent:"#e11d48", sidebar:"#4c0519", sidebarText:"#ffe4e6"},
-  orange:  {name:"Arancione", primary:"#ea580c", accent:"#ea580c", sidebar:"#431407", sidebarText:"#ffedd5"},
-  slate:   {name:"Grigio",    primary:"#475569", accent:"#6366f1", sidebar:"#0f172a", sidebarText:"#e2e8f0"},
-};
 const T_COLORS = ["#6366f1","#10b981","#f59e0b","#ef4444","#8b5cf6","#06b6d4","#ec4899"];
 
 const pkgRemaining = o => Math.max(0,(o?.package_total||0)-(o?.package_used||0));
@@ -123,9 +113,6 @@ export default function App() {
   const trashedStudents  = isAdmin ? students.filter(s=>s.deleted) : [];
   const safePage         = (!isAdmin&&["archive","admin","trash"].includes(page))?"home":page;
   const [profileModal,setProfileModal]=useState(false);
-  const [themeKey,setThemeKey]=useState(()=>localStorage.getItem("app_theme")||"indigo");
-  const th=THEMES[themeKey]||THEMES.indigo;
-  const changeTheme=(key)=>{setThemeKey(key);localStorage.setItem("app_theme",key);};
   const myClasses        = currentUser?(isAdmin?classes:classes.filter(c=>c.teacher_id===currentUser.id)):[];
 
   // ── CRUD — ogni operazione aggiorna lo state ottimisticamente
@@ -321,7 +308,7 @@ export default function App() {
           setCurrentUser(null); setPage("login");
           setStudents([]); setLessons([]); setClasses([]); setClassLessons([]); setNotes([]);
         }}
-        archivedCount={isAdmin?archivedStudents.length:0} trashedCount={isAdmin?trashedStudents.length:0} alertCount={alertCount} onProfile={()=>setProfileModal(true)} theme={th} themeKey={themeKey} onChangeTheme={changeTheme}
+        archivedCount={0} trashedCount={isAdmin?trashedStudents.length:0} alertCount={alertCount} onProfile={()=>setProfileModal(true)}
       />
       <main style={S.main}><div className="page-anim" key={safePage}>{pages[safePage]||pages.home}</div></main>
       {profileModal&&<ProfileModal user={currentUser} onSave={async(pw)=>{try{await db.upsertTeacher({id:currentUser.id,password:pw});showToast("Password aggiornata");}catch(e){showToast("Errore","err");}setProfileModal(false);}} onClose={()=>setProfileModal(false)}/>}
@@ -383,22 +370,12 @@ function LoginScreen({teachers,onLogin}) {
 }
 
 // ── SIDEBAR — identica all'originale ─────────────────────────────
-function Sidebar({user,page,setPage,isAdmin,onLogout,onProfile,archivedCount,trashedCount,alertCount,theme,themeKey,onChangeTheme}) {
+function Sidebar({user,page,setPage,isAdmin,onLogout,onProfile,archivedCount,trashedCount,alertCount}) {
   const items=[{id:"home",icon:"🏠",label:"Dashboard"},{id:"students",icon:"👤",label:"Studenti & Classi"},{id:"lessons",icon:"📚",label:"Lezioni Individuali"},{id:"classes",icon:"👥",label:"Lezioni di Classe"},{id:"calendar",icon:"📅",label:"Calendario"},{id:"reports",icon:"📊",label:"Report",badge:alertCount>0?`⚠️ ${alertCount}`:null,warn:true},{id:"report_s",icon:"📋",label:"Report Studenti"},...(isAdmin?[{id:"archive",icon:"🗄️",label:"Archivio",badge:archivedCount>0?archivedCount:null},{id:"trash",icon:"🗑️",label:"Cestino",badge:trashedCount>0?trashedCount:null},{id:"admin",icon:"⚙️",label:"Amministrazione"}]:[])];
   return (<aside style={S.sidebar}>
     <div style={S.sidebarTop}><div style={S.sidebarLogo}>🎓</div><div><div style={S.sidebarBrand}>English School</div><div style={{color:"#475569",fontSize:10}}>Registro</div></div></div>
     <nav style={S.nav}>{items.map(item=>(<button key={item.id} className="nav-item" style={{...S.navItem,...(page===item.id?S.navItemActive:{})}} onClick={()=>setPage(item.id)}><span style={S.navIcon}>{item.icon}</span><span style={{flex:1}}>{item.label}</span>{item.badge&&<span style={{...S.badge,...(item.warn?{background:"#ef444420",color:"#ef4444"}:{})}}>{item.badge}</span>}</button>))}</nav>
-    <div style={S.sidebarBottom}><div style={{...S.userChip,cursor:"pointer"}} onClick={onProfile}><div style={S.avatar}>{user.name[0]}</div><div><div style={S.userName}>{user.name}</div><div style={S.userRole}>{user.role==="admin"?"Amministratore":"Insegnante"}</div></div></div><button style={{...S.logoutBtn,marginBottom:4}} onClick={onProfile}>👤 Profilo</button>
-    <div style={{padding:"6px 12px 8px"}}>
-      <div style={{fontSize:10,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>Tema colore</div>
-      <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
-        {Object.entries(THEMES).map(([key,t])=>(
-          <button key={key} onClick={()=>onChangeTheme(key)} title={t.name}
-            style={{width:18,height:18,borderRadius:"50%",background:t.primary,border:themeKey===key?"2.5px solid white":"2px solid transparent",cursor:"pointer",padding:0}}/>
-        ))}
-      </div>
-    </div>
-    <button style={S.logoutBtn} onClick={onLogout}>Esci →</button></div>
+    <div style={S.sidebarBottom}><div style={{...S.userChip,cursor:"pointer"}} onClick={onProfile}><div style={S.avatar}>{user.name[0]}</div><div><div style={S.userName}>{user.name}</div><div style={S.userRole}>{user.role==="admin"?"Amministratore":"Insegnante"}</div></div></div><button style={{...S.logoutBtn,marginBottom:4}} onClick={onProfile}>👤 Profilo</button><button style={S.logoutBtn} onClick={onLogout}>Esci →</button></div>
   </aside>);
 }
 
@@ -484,7 +461,7 @@ function StudentsPage({user,students,classes,teachers,lessons,classLessons,isAdm
     {tab==="classes"&&(fC.length===0?<Empty text="Nessuna classe trovata"/>:(<div style={S.cardGrid}>{fC.map(cls=>{
       const clsS=students.filter(s=>(cls.student_ids||[]).includes(s.id));const clsL=classLessons.filter(l=>l.class_id===cls.id);const lastL=[...clsL].sort((a,b)=>b.date.localeCompare(a.date))[0];const teacher=teachers.find(t=>t.id===cls.teacher_id);const rem=pkgRemaining(cls);
       return(<div key={cls.id} style={{...S.studentCard,borderTop:`3px solid ${pkgColor(cls)}`}}>
-        <div style={S.cardTop}><div style={{...S.studentAvatar,background:"#f59e0b20",color:"#f59e0b",fontSize:20}}>👥</div><div style={{flex:1}}><div style={S.studentName}>{cls.name}</div><div style={S.studentMeta}>{teacher?.name||"—"} · {cls.schedule}{cls.company&&<span style={{marginLeft:6,background:"#e0f2fe",color:"#0369a1",borderRadius:6,padding:"1px 6px",fontSize:11}}>🏢 {cls.company}</span>}</div>{cls.contact_names&&<div style={{fontSize:11,color:"#6b7280",marginTop:2}}>👤 {cls.contact_names}</div>}</div></div>
+        <div style={S.cardTop}><div style={{...S.studentAvatar,background:"#f59e0b20",color:"#f59e0b",fontSize:20}}>👥</div><div style={{flex:1}}><div style={S.studentName}>{cls.name}</div><div style={S.studentMeta}>{teacher?.name||"—"} · {cls.schedule}{cls.company&&<span style={{marginLeft:6,background:"#e0f2fe",color:"#0369a1",borderRadius:6,padding:"1px 6px",fontSize:11}}>🏢 {cls.company}</span>}</div></div></div>
         <div style={{marginBottom:12}}><div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}><span style={{color:"#6b7280"}}>Pacchetto</span><span style={{fontWeight:700,color:pkgColor(cls)}}>{cls.package_used}/{cls.package_total} · <span style={{color:rem<=3?"#ef4444":"#10b981"}}>{rem} rimaste</span></span></div><div style={{height:6,background:"#f1f5f9",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:`${Math.min(100,(cls.package_used/cls.package_total)*100)}%`,background:pkgColor(cls),borderRadius:3}}/></div></div>
         <div style={S.cardStats}><div style={S.miniStat}><span style={S.miniStatVal}>{clsS.length}</span><span style={S.miniStatLbl}>studenti</span></div><div style={S.miniStat}><span style={S.miniStatVal}>{clsL.length}/{cls.package_total}</span><span style={S.miniStatLbl}>lezioni</span></div><div style={S.miniStat}><span style={S.miniStatVal}>{lastL?fmtDate(lastL.date):"—"}</span><span style={S.miniStatLbl}>ultima</span></div></div>
         <div style={{marginBottom:10,display:"flex",flexWrap:"wrap",gap:4}}>{clsS.map(s=><span key={s.id} style={{fontSize:11,background:"#f1f5f9",borderRadius:6,padding:"2px 8px"}}>{s.name.split(" ")[0]}</span>)}</div>
@@ -667,14 +644,13 @@ function ClassesPage({user,students,classes,classLessons,teachers,isAdmin,onAddC
 }
 
 function ClassModal({user,students,teachers,cls,onSave,onClose}) {
-  const [form,setForm]=useState(cls||{name:"",teacher_id:user.role==="admin"?"":user.id,student_ids:[],schedule:"",company:"",contact_names:"",package_total:20,package_used:0});
+  const [form,setForm]=useState(cls||{name:"",teacher_id:user.role==="admin"?"":user.id,student_ids:[],schedule:"",company:"",package_total:20,package_used:0});
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   const toggle=id=>setForm(f=>({...f,student_ids:f.student_ids.includes(id)?f.student_ids.filter(x=>x!==id):[...f.student_ids,id]}));
   const avail=students.filter(s=>s.is_class_student);
   return (<Overlay onClose={onClose} wide>
     <h2 style={S.modalTitle}>{cls?"Modifica Classe":"Nuova Classe"}</h2>
     <div style={S.fieldRow}><div style={S.field}><label style={S.label}>Nome classe *</label><input style={S.input} value={form.name} onChange={e=>set("name",e.target.value)} placeholder="Es. Gruppo A1 Mattino"/></div><div style={S.field}><label style={S.label}>Azienda</label><input style={S.input} value={form.company||""} onChange={e=>set("company",e.target.value)} placeholder="Es. Acme Srl"/></div></div>
-    <div style={S.field}><label style={S.label}>Responsabile/i (opzionale)</label><input style={S.input} value={form.contact_names||""} onChange={e=>set("contact_names",e.target.value)} placeholder="Es. Mario Rossi, Giulia Bianchi"/></div>
     <div style={S.field}><label style={S.label}>Orario ricorrente</label><input style={S.input} value={form.schedule||""} onChange={e=>set("schedule",e.target.value)} placeholder="Es. Lunedì 09:00"/></div>
     <div style={S.fieldRow}><div style={S.field}><label style={S.label}>Lezioni pacchetto</label><input type="number" min="1" style={S.input} value={form.package_total||20} onChange={e=>set("package_total",Number(e.target.value))}/></div>{user.role==="admin"&&<div style={S.field}><label style={S.label}>Insegnante</label><select style={S.input} value={form.teacher_id||""} onChange={e=>set("teacher_id",e.target.value)}><option value="">— Seleziona —</option>{teachers.filter(t=>t.role==="teacher").map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></div>}</div>
     <div style={S.field}><label style={S.label}>Studenti della classe</label><div style={{display:"flex",flexWrap:"wrap",gap:8,marginTop:8}}>{avail.map(s=>(<label key={s.id} style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",background:form.student_ids.includes(s.id)?"#6366f115":"#f8fafc",border:`1.5px solid ${form.student_ids.includes(s.id)?"#6366f1":"#e2e8f0"}`,borderRadius:8,padding:"6px 12px",fontSize:13}}><input type="checkbox" checked={form.student_ids.includes(s.id)} onChange={()=>toggle(s.id)}/>{s.name} <LevelBadge level={s.level} small/></label>))}</div></div>
@@ -890,27 +866,9 @@ function StudentReportPage({user,students,lessons,isAdmin}) {
 // ── ARCHIVIO — identico all'originale ────────────────────────────
 function ArchivePage({students,teachers,lessons,onRestore,onTrash}) {
   const [restoreModal,setRM]=useState(null);const [selected,setSel]=useState(null);const [confirmTrash,setConfirmTrash]=useState(null);
-  const [search,setSearch]=useState("");const [filterYear,setFilterYear]=useState("");
-  const years=[...new Set(students.map(s=>s.enrollment_date?.slice(0,4)||lessons.filter(l=>l.student_id===s.id).sort((a,b)=>a.date.localeCompare(b.date))[0]?.date?.slice(0,4)).filter(Boolean))].sort((a,b)=>b-a);
-  const filtered=students.filter(s=>{
-    const matchName=!search||s.name.toLowerCase().includes(search.toLowerCase());
-    const firstLesson=lessons.filter(l=>l.student_id===s.id).sort((a,b)=>a.date.localeCompare(b.date))[0];
-    const yearRef=s.enrollment_date?.slice(0,4)||firstLesson?.date?.slice(0,4)||"";
-    const matchYear=!filterYear||yearRef===filterYear;
-    return matchName&&matchYear;
-  });
   return (<div style={S.page}>
-    <div style={S.pageHeader}><div><h1 style={S.pageTitle}>Archivio Studenti</h1><p style={S.pageSub}>Solo l'amministratore può accedere a questa sezione.</p></div></div>
-    <div style={{display:"flex",gap:8,marginBottom:20,flexWrap:"wrap"}}>
-      <input style={{...S.input,maxWidth:280}} placeholder="🔍 Cerca per nome…" value={search} onChange={e=>setSearch(e.target.value)}/>
-      <select style={{...S.input,width:"auto",minWidth:140}} value={filterYear} onChange={e=>setFilterYear(e.target.value)}>
-        <option value="">Tutti gli anni</option>
-        {years.map(y=><option key={y} value={y}>{y}</option>)}
-      </select>
-      {(search||filterYear)&&<button style={{...S.btnSecondary,width:"auto",padding:"8px 14px",fontSize:13}} onClick={()=>{setSearch("");setFilterYear("");}}>✕ Rimuovi filtri</button>}
-    </div>
-    <p style={{fontSize:13,color:"#9ca3af",marginBottom:16}}>{filtered.length} studenti{search||filterYear?" trovati":""} su {students.length} in archivio</p>
-    {filtered.length===0?<Empty text="Nessuno studente trovato"/>:(<div style={S.cardGrid}>{filtered.map(student=>{
+    <h1 style={S.pageTitle}>Archivio Studenti</h1><p style={S.pageSub}>Solo l'amministratore può accedere a questa sezione.</p>
+    {students.length===0?<Empty text="L'archivio è vuoto"/>:(<div style={S.cardGrid}>{students.map(student=>{
       const sl=lessons.filter(l=>l.student_id===student.id);const teacher=teachers.find(t=>t.id===student.teacher_id);
       return(<div key={student.id} style={{...S.studentCard,borderLeft:"4px solid #8b5cf6"}}>
         <div style={S.cardTop}><div style={{...S.studentAvatar,background:"#8b5cf620",color:"#8b5cf6"}}>{student.name.split(" ").map(n=>n[0]).join("").slice(0,2)}</div><div style={{flex:1}}><div style={S.studentName}>{student.name}</div><div style={S.studentMeta}>Ultimo ins: {teacher?.name||"—"}</div></div><LevelBadge level={student.level}/></div>
