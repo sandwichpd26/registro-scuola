@@ -13,8 +13,8 @@ import { useState, useMemo, useEffect, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 // ── ⚙️  CONFIGURA QUI ──────────────────────────────────────────────
-const SUPABASE_URL  = "https://kckgcwaeqoshyyjlyiur.supabase.co"; // ← sostituisci
-const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtja2djd2FlcW9zaHl5amx5aXVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMwMjQwNjQsImV4cCI6MjA4ODYwMDA2NH0.YdtDNaig_ScfMqh5iQsncP_inQoBdmXlpb-rSO3GsEc";                                // ← sostituisci
+const SUPABASE_URL  = "https://XXXXXXXXXXXXXXXX.supabase.co"; // ← sostituisci
+const SUPABASE_ANON = "eyJ...";                                // ← sostituisci
 // ──────────────────────────────────────────────────────────────────
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON);
@@ -25,59 +25,7 @@ const today    = () => new Date().toISOString().split("T")[0];
 const fmtDate  = d => { if(!d)return""; const [y,m,dd]=d.split("-"); return `${dd}/${m}/${y}`; };
 const LEVELS   = Array.from({length:50},(_,i)=>i+1);
 const DURATIONS= [30,45,60,90,120];
-const T_COLORS = ["#6366f1","#8b5cf6","#a855f7","#d946ef","#ec4899","#ef4444","#e11d48","#f97316","#f59e0b","#eab308","#84cc16","#22c55e","#10b981","#14b8a6","#06b6d4","#0ea5e9","#3b82f6","#0284c7","#0891b2","#059669","#15803d","#65a30d","#ca8a04","#dc2626","#7c3aed","#b45309","#78716c","#64748b","#475569","#1e293b"];
-
-const THEMES = {
-  indigo: {
-    name: "Viola/Indigo", emoji: "🟣",
-    primary: "#6366f1", primaryLight: "#eef2ff", primaryDark: "#4f46e5",
-    sidebar: "#2d2b55", sidebarHover: "#3d3a72",
-    accent: "#a5b4fc",
-  },
-  ocean: {
-    name: "Blu Oceano", emoji: "🔵",
-    primary: "#0ea5e9", primaryLight: "#e0f2fe", primaryDark: "#0284c7",
-    sidebar: "#0f3054", sidebarHover: "#1a4a78",
-    accent: "#7dd3fc",
-  },
-  emerald: {
-    name: "Verde Smeraldo", emoji: "🟢",
-    primary: "#10b981", primaryLight: "#d1fae5", primaryDark: "#059669",
-    sidebar: "#134e35", sidebarHover: "#1c6e4a",
-    accent: "#6ee7b7",
-  },
-  sunset: {
-    name: "Rosso/Arancio", emoji: "🟠",
-    primary: "#f97316", primaryLight: "#fff7ed", primaryDark: "#ea580c",
-    sidebar: "#4a2010", sidebarHover: "#6b3018",
-    accent: "#fdba74",
-  },
-  rose: {
-    name: "Rosa/Fucsia", emoji: "🌸",
-    primary: "#ec4899", primaryLight: "#fdf2f8", primaryDark: "#db2777",
-    sidebar: "#4a1030", sidebarHover: "#6b1845",
-    accent: "#f9a8d4",
-  },
-  sky: {
-    name: "Azzurro", emoji: "🩵",
-    primary: "#06b6d4", primaryLight: "#ecfeff", primaryDark: "#0891b2",
-    sidebar: "#0d3d4a", sidebarHover: "#145666",
-    accent: "#67e8f9",
-  },
-  dark: {
-    name: "Grigio Scuro", emoji: "🌑",
-    primary: "#8b8fa8", primaryLight: "#f3f4f6", primaryDark: "#5c6070",
-    sidebar: "#2a2d3a", sidebarHover: "#3a3e50",
-    accent: "#c4c8d8",
-  },
-};
-
-const getTheme = () => {
-  try { return THEMES[localStorage.getItem("si_theme")] || THEMES.indigo; } catch { return THEMES.indigo; }
-};
-const saveTheme = (key) => {
-  try { localStorage.setItem("si_theme", key); } catch {}
-};
+const T_COLORS = ["#6366f1","#10b981","#f59e0b","#ef4444","#8b5cf6","#06b6d4","#ec4899"];
 
 const pkgRemaining = o => Math.max(0,(o?.package_total||0)-(o?.package_used||0));
 const pkgColor     = o => { const r=pkgRemaining(o); return r<=0?"#ef4444":r<=3?"#f59e0b":"#10b981"; };
@@ -88,9 +36,6 @@ const db = {
   async getTeachers()  { const {data,error}=await supabase.from("teachers").select("*").order("name"); if(error)throw error; return data||[]; },
   async upsertTeacher(t) { const {data,error}=await supabase.from("teachers").upsert(t).select().single(); if(error)throw error; return data; },
   async deleteTeacher(id){ const {error}=await supabase.from("teachers").delete().eq("id",id); if(error)throw error; },
-  async trashTeacher(id){ const {data,error}=await supabase.from("teachers").update({deleted:true,archived:false}).eq("id",id).select().single(); if(error)throw error; return data; },
-  async archiveTeacher(id){ const {data,error}=await supabase.from("teachers").update({archived:true,deleted:false}).eq("id",id).select().single(); if(error)throw error; return data; },
-  async restoreTeacher(id){ const {data,error}=await supabase.from("teachers").update({deleted:false,archived:false}).eq("id",id).select().single(); if(error)throw error; return data; },
 
   async getStudents()  { const {data,error}=await supabase.from("students").select("*").order("name"); if(error)throw error; return data||[]; },
   async upsertStudent(s) { const {data,error}=await supabase.from("students").upsert(s).select().single(); if(error)throw error; return data; },
@@ -114,9 +59,6 @@ const db = {
 
 // ── APP ROOT ──────────────────────────────────────────────────────
 export default function App() {
-  const [theme,setThemeState]          = useState(getTheme);
-  const th = theme;
-  const applyTheme = (key) => { saveTheme(key); setThemeState(THEMES[key]||THEMES.indigo); };
   const [teachers,setTeachers]         = useState([]);
   const [students,setStudents]         = useState([]);
   const [lessons,setLessons]           = useState([]);
@@ -169,9 +111,6 @@ export default function App() {
   const allActiveStudents = myStudents.filter(s=>s.active&&!s.deleted);
   const archivedStudents = isAdmin ? students.filter(s=>!s.active&&!s.deleted) : [];
   const trashedStudents  = isAdmin ? students.filter(s=>s.deleted) : [];
-  const activeTeachers   = teachers.filter(t=>t.role==="teacher"&&!t.deleted&&!t.archived);
-  const archivedTeachers = isAdmin ? teachers.filter(t=>t.role==="teacher"&&t.archived&&!t.deleted) : [];
-  const trashedTeachers  = isAdmin ? teachers.filter(t=>t.role==="teacher"&&t.deleted) : [];
   const safePage         = (!isAdmin&&["archive","admin","trash"].includes(page))?"home":page;
   const [profileModal,setProfileModal]=useState(false);
   const myClasses        = currentUser?(isAdmin?classes:classes.filter(c=>c.teacher_id===currentUser.id)):[];
@@ -193,27 +132,12 @@ export default function App() {
   const delTeacher = async id => {
     const prev=teachers;
     setTeachers(p=>p.filter(t=>t.id!==id));
-    try { await db.deleteTeacher(id); showToast("Insegnante eliminato definitivamente"); }
+    try { await db.deleteTeacher(id); showToast("Insegnante rimosso"); }
     catch(e) { setTeachers(prev); showToast("Errore","err"); }
-  };
-  const trashTeacher = async id => {
-    setTeachers(p=>p.map(t=>t.id===id?{...t,deleted:true,archived:false}:t));
-    try { await db.trashTeacher(id); showToast("Insegnante spostato nel cestino"); }
-    catch(e) { showToast("Errore","err"); }
-  };
-  const archiveTeacher = async id => {
-    setTeachers(p=>p.map(t=>t.id===id?{...t,archived:true,deleted:false}:t));
-    try { await db.archiveTeacher(id); showToast("Insegnante archiviato"); }
-    catch(e) { showToast("Errore","err"); }
-  };
-  const restoreTeacher = async id => {
-    setTeachers(p=>p.map(t=>t.id===id?{...t,deleted:false,archived:false}:t));
-    try { await db.restoreTeacher(id); showToast("Insegnante ripristinato"); }
-    catch(e) { showToast("Errore","err"); }
   };
 
   const addStudent = async s => {
-    const obj={...s,id:uid(),active:true,package_used:s.package_used||0,enrollment_date:s.enrollment_date||null,package_history:s.package_history||[]};
+    const obj={...s,id:uid(),active:true,package_used:0};
     setStudents(p=>[...p,obj]);
     try { await db.upsertStudent(obj); showToast("Studente aggiunto"); }
     catch(e) { setStudents(p=>p.filter(x=>x.id!==obj.id)); showToast("Errore salvataggio","err"); }
@@ -221,19 +145,6 @@ export default function App() {
   const updateStudent = async s => {
     setStudents(p=>p.map(x=>x.id===s.id?s:x));
     try { await db.upsertStudent(s); showToast("Modifiche salvate"); }
-    catch(e) { showToast("Errore salvataggio","err"); }
-  };
-  const addNewPackage = async (sid, newTotal) => {
-    const s = students.find(x=>x.id===sid);
-    if(!s) return;
-    const histEntry = {package_total:s.package_total, package_used:s.package_used, closed_at:today()};
-    const newHistory = [...(s.package_history||[]), histEntry];
-    const totalLessons = lessons.filter(l=>l.student_id===sid).length;
-    const prevUsed = newHistory.reduce((acc,h)=>acc+(h.package_used||0),0);
-    const newUsed = Math.max(0, totalLessons - prevUsed + histEntry.package_used);
-    const updated = {...s, package_total:newTotal, package_used:0, package_history:newHistory};
-    setStudents(p=>p.map(x=>x.id===sid?updated:x));
-    try { await db.upsertStudent(updated); showToast("Nuovo pacchetto aggiunto ✓"); }
     catch(e) { showToast("Errore salvataggio","err"); }
   };
   const archiveStudent = async id => {
@@ -294,18 +205,6 @@ export default function App() {
     setLessons(p=>[obj,...p]); bump(l.student_id,1);
     try { await db.upsertLesson(obj); showToast("Lezione registrata ✓"); }
     catch(e) { setLessons(p=>p.filter(x=>x.id!==obj.id)); showToast("Errore salvataggio","err"); }
-  };
-  const addLessonAsAdmin = async l => {
-    const obj={...l,id:uid()};
-    setLessons(p=>[obj,...p]); bump(l.student_id,1);
-    try { await db.upsertLesson(obj); }
-    catch(e) { setLessons(p=>p.filter(x=>x.id!==obj.id)); throw e; }
-  };
-  const addLessonAsAdmin = async l => {
-    const obj={...l,id:uid()};
-    setLessons(p=>[obj,...p]); bump(l.student_id,1);
-    try { await db.upsertLesson(obj); }
-    catch(e) { setLessons(p=>p.filter(x=>x.id!==obj.id)); throw e; }
   };
   const updateLesson = async l => {
     setLessons(p=>p.map(x=>x.id===l.id?l:x));
@@ -387,15 +286,15 @@ export default function App() {
 
   const pages = {
     home:     <HomePage     user={currentUser} students={myStudents} lessons={lessons} classLessons={classLessons} classes={myClasses} teachers={teachers} setPage={setPage} isAdmin={isAdmin}/>,
-    students: <StudentsPage user={currentUser} students={allActiveStudents} classes={myClasses} teachers={teachers} lessons={lessons} classLessons={classLessons} isAdmin={isAdmin} onAdd={addStudent} onUpdate={updateStudent} onArchive={archiveStudent} onTrash={trashStudent} onNewPackage={addNewPackage}/>,
+    students: <StudentsPage user={currentUser} students={allActiveStudents} classes={myClasses} teachers={teachers} lessons={lessons} classLessons={classLessons} isAdmin={isAdmin} onAdd={addStudent} onUpdate={updateStudent} onArchive={archiveStudent} onTrash={trashStudent}/>,
     lessons:  <LessonsPage  user={currentUser} students={activeStudents} lessons={lessons} teachers={teachers} isAdmin={isAdmin} onAdd={addLesson} onAddRecurring={addRecurringLessons} onUpdate={updateLesson} onDelete={deleteLesson}/>,
     classes:  <ClassesPage  user={currentUser} students={allActiveStudents} classes={myClasses} classLessons={myClassLessons} teachers={teachers} isAdmin={isAdmin} onAddClass={addClass} onUpdateClass={updateClass} onDeleteClass={deleteClass} onAddClassLesson={addClassLesson} onUpdateClassLesson={updateClassLesson} onDeleteClassLesson={deleteClassLesson}/>,
-    calendar: <CalendarPage user={currentUser} students={myStudents} lessons={lessons} classLessons={classLessons} classes={myClasses} teachers={teachers} isAdmin={isAdmin} notes={myNotes} onAddNote={addNote} onUpdateNote={updateNote} onDeleteNote={deleteNote} onImportLesson={addLessonAsAdmin} allStudents={students} allTeachers={teachers}/>,
-    reports:  <ReportsPage  user={currentUser} students={activeStudents} classes={myClasses} lessons={lessons} classLessons={classLessons} teachers={teachers} isAdmin={isAdmin}/>,
+    calendar: <CalendarPage user={currentUser} students={myStudents} lessons={lessons} classLessons={classLessons} classes={myClasses} teachers={teachers} isAdmin={isAdmin} notes={myNotes} onAddNote={addNote} onUpdateNote={updateNote} onDeleteNote={deleteNote}/>,
+    reports:  <ReportsPage  user={currentUser} students={isAdmin?students:activeStudents} classes={myClasses} lessons={lessons} classLessons={classLessons} teachers={teachers} isAdmin={isAdmin}/>,
     report_s: <StudentReportPage user={currentUser} students={myStudents.filter(s=>s.active&&!s.deleted)} lessons={lessons} isAdmin={isAdmin}/>,
-    archive:  isAdmin?<ArchivePage students={archivedStudents} teachers={teachers} archivedTeachers={archivedTeachers} lessons={lessons} onRestore={restoreStudent} onTrash={trashStudent} onArchiveTeacher={archiveTeacher} onRestoreTeacher={restoreTeacher} onTrashTeacher={trashTeacher}/>:null,
-    trash:    isAdmin?<TrashPage students={trashedStudents} trashedTeachers={trashedTeachers} onRestore={restoreFromTrash} onDeleteForever={deleteForever} onRestoreTeacher={restoreTeacher} onDeleteTeacherForever={delTeacher}/>:null,
-    admin:    isAdmin?<AdminPage   teachers={activeTeachers} students={students} lessons={lessons} classLessons={classLessons} onAddTeacher={addTeacher} onDeleteTeacher={trashTeacher} onUpdateTeacher={updateTeacher} onReassignStudent={reassignStudent} onArchiveTeacher={archiveTeacher}/>:null,
+    archive:  isAdmin?<ArchivePage students={archivedStudents} teachers={teachers} lessons={lessons} onRestore={restoreStudent} onTrash={trashStudent}/>:null,
+    trash:    isAdmin?<TrashPage students={trashedStudents} onRestore={restoreFromTrash} onDeleteForever={deleteForever}/>:null,
+    admin:    isAdmin?<AdminPage   teachers={teachers} students={students} lessons={lessons} classLessons={classLessons} onAddTeacher={addTeacher} onDeleteTeacher={delTeacher} onUpdateTeacher={updateTeacher} onReassignStudent={reassignStudent}/>:null,
   };
 
   return (
@@ -404,36 +303,29 @@ export default function App() {
       {loading && <div style={S.loadingBar}><div style={S.loadingBarFill}/></div>}
       {/* Toast notifiche */}
       {toast && <Toast msg={toast.msg} type={toast.type}/>}
-      <Sidebar user={currentUser} page={safePage} setPage={setPage} isAdmin={isAdmin} theme={th}
+      <Sidebar user={currentUser} page={safePage} setPage={setPage} isAdmin={isAdmin}
         onLogout={()=>{
           setCurrentUser(null); setPage("login");
           setStudents([]); setLessons([]); setClasses([]); setClassLessons([]); setNotes([]);
         }}
-        archivedCount={0} trashedCount={isAdmin?(trashedStudents.length+trashedTeachers.length):0} alertCount={alertCount} onProfile={()=>setProfileModal(true)}
+        archivedCount={isAdmin?archivedStudents.length:0} trashedCount={isAdmin?trashedStudents.length:0} alertCount={alertCount} onProfile={()=>setProfileModal(true)}
       />
       <main style={S.main}><div className="page-anim" key={safePage}>{pages[safePage]||pages.home}</div></main>
-      {profileModal&&<ProfileModal user={currentUser} theme={th} themes={THEMES} onApplyTheme={applyTheme} onSave={async(pw)=>{try{await db.upsertTeacher({id:currentUser.id,password:pw});showToast("Password aggiornata");}catch(e){showToast("Errore","err");}setProfileModal(false);}} onClose={()=>setProfileModal(false)}/>}
+      {profileModal&&<ProfileModal user={currentUser} onSave={async(pw)=>{try{await db.upsertTeacher({id:currentUser.id,password:pw});showToast("Password aggiornata");}catch(e){showToast("Errore","err");}setProfileModal(false);}} onClose={()=>setProfileModal(false)}/>}
     </div>
   );
 }
 
-function ProfileModal({user,onSave,onClose,theme,themes,onApplyTheme}) {
+function ProfileModal({user,onSave,onClose}) {
   const [pw,setPw]=useState("");const [pw2,setPw2]=useState("");const [err,setErr]=useState("");
-  const th=theme||THEMES.indigo;
   const save=()=>{if(pw.length<4){setErr("Minimo 4 caratteri");return;}if(pw!==pw2){setErr("Le password non coincidono");return;}onSave(pw);};
   return (<Overlay onClose={onClose}><h2 style={S.modalTitle}>👤 Il tuo profilo</h2>
     <div style={{background:"#f0fdf4",borderRadius:10,padding:"12px 16px",marginBottom:16,fontSize:14}}><strong>{user.name}</strong><br/><span style={{color:"#6b7280"}}>{user.email}</span></div>
-    <div style={{fontWeight:700,fontSize:14,marginBottom:12,color:"#374151"}}>🎨 Tema colori</div>
-    <div style={{display:"flex",flexWrap:"wrap",gap:10,marginBottom:20}}>{Object.entries(themes||THEMES).map(([key,t])=>(
-      <button key={key} onClick={()=>onApplyTheme(key)} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 14px",borderRadius:10,border:`2px solid ${th===t?"#0f172a":t.primary+"40"}`,background:th===t?t.primaryLight:"white",cursor:"pointer",fontWeight:600,fontSize:13,color:th===t?t.primaryDark:"#374151",transition:"all 0.15s"}}>
-        <span style={{width:16,height:16,borderRadius:"50%",background:t.primary,display:"inline-block",flexShrink:0}}/>{t.emoji} {t.name}{th===t&&<span style={{color:t.primaryDark,fontSize:11}}> ✓</span>}
-      </button>
-    ))}</div>
     <div style={{fontWeight:700,fontSize:14,marginBottom:12,color:"#374151"}}>🔒 Cambia password</div>
     {err&&<div style={S.error}>{err}</div>}
     <div style={S.field}><label style={S.label}>Nuova password</label><input type="password" style={S.input} value={pw} onChange={e=>{setPw(e.target.value);setErr("");}}/></div>
     <div style={S.field}><label style={S.label}>Conferma password</label><input type="password" style={S.input} value={pw2} onChange={e=>{setPw2(e.target.value);setErr("");}}/></div>
-    <div style={S.modalActions}><button style={S.btnSecondary} onClick={onClose}>Annulla</button><button style={{...S.btnPrimary,width:"auto",background:th.primary}} disabled={!pw} onClick={save}>Aggiorna Password</button></div>
+    <div style={S.modalActions}><button style={S.btnSecondary} onClick={onClose}>Annulla</button><button style={{...S.btnPrimary,width:"auto"}} disabled={!pw} onClick={save}>Aggiorna Password</button></div>
   </Overlay>);
 }
 
@@ -461,8 +353,8 @@ function LoginScreen({teachers,onLogin}) {
     else  { setErr("Email o password non corretti"); setBusy(false); }
   };
   return (<div style={S.loginBg}><div style={S.loginCard}>
-    <div style={S.loginLogo}>🥪</div>
-    <h1 style={S.loginTitle}>Sandwich Institute</h1>
+    <div style={S.loginLogo}>🎓</div>
+    <h1 style={S.loginTitle}>English School</h1>
     <p style={S.loginSub}>Registro Elettronico</p>
     <div style={S.field}><label style={S.label}>Email</label>
       <input style={S.input} type="email" value={email} onChange={e=>{setEmail(e.target.value);setErr("");}} onKeyDown={e=>e.key==="Enter"&&go()} autoFocus/>
@@ -478,13 +370,12 @@ function LoginScreen({teachers,onLogin}) {
 }
 
 // ── SIDEBAR — identica all'originale ─────────────────────────────
-function Sidebar({user,page,setPage,isAdmin,onLogout,onProfile,archivedCount,trashedCount,alertCount,theme}) {
-  const th=theme||THEMES.indigo;
+function Sidebar({user,page,setPage,isAdmin,onLogout,onProfile,archivedCount,trashedCount,alertCount}) {
   const items=[{id:"home",icon:"🏠",label:"Dashboard"},{id:"students",icon:"👤",label:"Studenti & Classi"},{id:"lessons",icon:"📚",label:"Lezioni Individuali"},{id:"classes",icon:"👥",label:"Lezioni di Classe"},{id:"calendar",icon:"📅",label:"Calendario"},{id:"reports",icon:"📊",label:"Report",badge:alertCount>0?`⚠️ ${alertCount}`:null,warn:true},{id:"report_s",icon:"📋",label:"Report Studenti"},...(isAdmin?[{id:"archive",icon:"🗄️",label:"Archivio",badge:archivedCount>0?archivedCount:null},{id:"trash",icon:"🗑️",label:"Cestino",badge:trashedCount>0?trashedCount:null},{id:"admin",icon:"⚙️",label:"Amministrazione"}]:[])];
-  return (<aside style={{...S.sidebar,background:th.sidebar}}>
-    <div style={{...S.sidebarTop,borderColor:th.sidebarHover}}><div style={S.sidebarLogo}>🥪</div><div><div style={S.sidebarBrand}>Sandwich Institute</div><div style={{color:"#475569",fontSize:10}}>Registro</div></div></div>
-    <nav style={S.nav}>{items.map(item=>(<button key={item.id} className="nav-item" style={{...S.navItem,...(page===item.id?{...S.navItemActive,background:th.primary}:{})}} onClick={()=>setPage(item.id)}><span style={S.navIcon}>{item.icon}</span><span style={{flex:1}}>{item.label}</span>{item.badge&&<span style={{...S.badge,...(item.warn?{background:"#ef444420",color:"#ef4444"}:{background:th.primary+"30",color:th.accent})}}>{item.badge}</span>}</button>))}</nav>
-    <div style={{...S.sidebarBottom,borderColor:th.sidebarHover}}><div style={{...S.userChip,cursor:"pointer"}} onClick={onProfile}><div style={{...S.avatar,background:th.primary}}>{user.name[0]}</div><div><div style={S.userName}>{user.name}</div><div style={S.userRole}>{user.role==="admin"?"Amministratore":"Insegnante"}</div></div></div><button style={{...S.logoutBtn,borderColor:th.sidebarHover,marginBottom:4}} onClick={onProfile}>👤 Profilo</button><button style={{...S.logoutBtn,borderColor:th.sidebarHover}} onClick={onLogout}>Esci →</button></div>
+  return (<aside style={S.sidebar}>
+    <div style={S.sidebarTop}><div style={S.sidebarLogo}>🎓</div><div><div style={S.sidebarBrand}>English School</div><div style={{color:"#475569",fontSize:10}}>Registro</div></div></div>
+    <nav style={S.nav}>{items.map(item=>(<button key={item.id} className="nav-item" style={{...S.navItem,...(page===item.id?S.navItemActive:{})}} onClick={()=>setPage(item.id)}><span style={S.navIcon}>{item.icon}</span><span style={{flex:1}}>{item.label}</span>{item.badge&&<span style={{...S.badge,...(item.warn?{background:"#ef444420",color:"#ef4444"}:{})}}>{item.badge}</span>}</button>))}</nav>
+    <div style={S.sidebarBottom}><div style={{...S.userChip,cursor:"pointer"}} onClick={onProfile}><div style={S.avatar}>{user.name[0]}</div><div><div style={S.userName}>{user.name}</div><div style={S.userRole}>{user.role==="admin"?"Amministratore":"Insegnante"}</div></div></div><button style={{...S.logoutBtn,marginBottom:4}} onClick={onProfile}>👤 Profilo</button><button style={S.logoutBtn} onClick={onLogout}>Esci →</button></div>
   </aside>);
 }
 
@@ -547,22 +438,15 @@ function HomePage({user,students,lessons,classLessons,classes,teachers,setPage,i
 }
 
 // ── STUDENTI & CLASSI — identica all'originale ────────────────────
-function StudentsPage({user,students,classes,teachers,lessons,classLessons,isAdmin,onAdd,onUpdate,onArchive,onTrash,onNewPackage}) {
-  const [tab,setTab]=useState("students");const [search,setSearch]=useState("");const [filterTeacher,setFT]=useState("");const [detailStudent,setDS]=useState(null);const [detailClass,setDC]=useState(null);const [editModal,setEdit]=useState(null);const [confirm,setConfirm]=useState(null);const [confirmTrash,setConfirmTrash]=useState(null);
-  const teacherList=teachers.filter(t=>t.role==="teacher");
-  const fS=students.filter(s=>(s.name.toLowerCase().includes(search.toLowerCase())||String(s.level).includes(search))&&(!filterTeacher||s.teacher_id===filterTeacher));
-  const fC=classes.filter(c=>c.name.toLowerCase().includes(search.toLowerCase())&&(!filterTeacher||c.teacher_id===filterTeacher));
-  const exportCSV=()=>{
-    const rows=[["Nome","Insegnante","Livello","Email","Telefono","Azienda","Pacchetto Tot.","Svolte","Rimaste","Data Iscrizione","Note"]];
-    fS.forEach(s=>{const t=teachers.find(x=>x.id===s.teacher_id);rows.push([s.name,t?.name||"",s.level,s.email||"",s.phone||"",s.company||"",s.package_total,s.package_used,pkgRemaining(s),s.enrollment_date||"",s.notes||""]);});
-    const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
-    const a=document.createElement("a");a.href="data:text/csv;charset=utf-8,\uFEFF"+encodeURIComponent(csv);a.download="studenti.csv";a.click();
-  };
+function StudentsPage({user,students,classes,teachers,lessons,classLessons,isAdmin,onAdd,onUpdate,onArchive,onTrash}) {
+  const [tab,setTab]=useState("students");const [search,setSearch]=useState("");const [detailStudent,setDS]=useState(null);const [detailClass,setDC]=useState(null);const [editModal,setEdit]=useState(null);const [confirm,setConfirm]=useState(null);const [confirmTrash,setConfirmTrash]=useState(null);
+  const fS=students.filter(s=>s.name.toLowerCase().includes(search.toLowerCase())||String(s.level).includes(search));
+  const fC=classes.filter(c=>c.name.toLowerCase().includes(search.toLowerCase()));
   return (<div style={S.page}>
-    <div style={S.pageHeader}><div><h1 style={S.pageTitle}>Studenti & Classi</h1><p style={S.pageSub}>{students.length} studenti · {classes.length} classi</p></div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{isAdmin&&<button style={{...S.btnPrimary,width:"auto",background:"#10b981"}} onClick={exportCSV}>📥 Esporta CSV</button>}{isAdmin&&<button style={{...S.btnPrimary,width:"auto"}} onClick={()=>setEdit("add")}>+ Nuovo Studente</button>}</div></div>
+    <div style={S.pageHeader}><div><h1 style={S.pageTitle}>Studenti & Classi</h1><p style={S.pageSub}>{students.length} studenti · {classes.length} classi</p></div>{isAdmin&&<button style={{...S.btnPrimary,width:"auto"}} onClick={()=>setEdit("add")}>+ Nuovo Studente</button>}</div>
     {!isAdmin&&<div style={{background:"#fef3c7",border:"1px solid #fbbf24",borderRadius:10,padding:"10px 16px",marginBottom:16,fontSize:13,color:"#92400e"}}>ℹ️ Solo l'amministratore può aggiungere nuovi studenti.</div>}
     <div style={{display:"flex",gap:8,marginBottom:16}}>{[["students","👤 Studenti Individuali"],["classes","👥 Classi"]].map(([id,label])=>(<button key={id} onClick={()=>setTab(id)} style={{padding:"8px 20px",borderRadius:10,border:"none",cursor:"pointer",fontWeight:600,fontSize:14,background:tab===id?"#6366f1":"#f1f5f9",color:tab===id?"white":"#374151"}}>{label}</button>))}</div>
-    <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}><input style={{...S.input,maxWidth:280}} placeholder="🔍  Cerca…" value={search} onChange={e=>setSearch(e.target.value)}/>{isAdmin&&<select style={{...S.input,width:"auto",minWidth:180}} value={filterTeacher} onChange={e=>setFT(e.target.value)}><option value="">Tutti gli insegnanti</option>{teacherList.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select>}</div>
+    <input style={{...S.input,marginBottom:20,maxWidth:320}} placeholder="🔍  Cerca…" value={search} onChange={e=>setSearch(e.target.value)}/>
     {tab==="students"&&(fS.length===0?<Empty text="Nessuno studente trovato"/>:(<div style={S.cardGrid}>{fS.map(student=>{
       const sl=lessons.filter(l=>l.student_id===student.id);const lastL=[...sl].sort((a,b)=>b.date.localeCompare(a.date))[0];const teacher=teachers.find(t=>t.id===student.teacher_id);const rem=pkgRemaining(student);
       return(<div key={student.id} style={{...S.studentCard,borderTop:`3px solid ${pkgColor(student)}`}}>
@@ -580,26 +464,26 @@ function StudentsPage({user,students,classes,teachers,lessons,classLessons,isAdm
         <div style={S.cardTop}><div style={{...S.studentAvatar,background:"#f59e0b20",color:"#f59e0b",fontSize:20}}>👥</div><div style={{flex:1}}><div style={S.studentName}>{cls.name}</div><div style={S.studentMeta}>{teacher?.name||"—"} · {cls.schedule}{cls.company&&<span style={{marginLeft:6,background:"#e0f2fe",color:"#0369a1",borderRadius:6,padding:"1px 6px",fontSize:11}}>🏢 {cls.company}</span>}</div></div></div>
         <div style={{marginBottom:12}}><div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}><span style={{color:"#6b7280"}}>Pacchetto</span><span style={{fontWeight:700,color:pkgColor(cls)}}>{cls.package_used}/{cls.package_total} · <span style={{color:rem<=3?"#ef4444":"#10b981"}}>{rem} rimaste</span></span></div><div style={{height:6,background:"#f1f5f9",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:`${Math.min(100,(cls.package_used/cls.package_total)*100)}%`,background:pkgColor(cls),borderRadius:3}}/></div></div>
         <div style={S.cardStats}><div style={S.miniStat}><span style={S.miniStatVal}>{clsS.length}</span><span style={S.miniStatLbl}>studenti</span></div><div style={S.miniStat}><span style={S.miniStatVal}>{clsL.length}/{cls.package_total}</span><span style={S.miniStatLbl}>lezioni</span></div><div style={S.miniStat}><span style={S.miniStatVal}>{lastL?fmtDate(lastL.date):"—"}</span><span style={S.miniStatLbl}>ultima</span></div></div>
-        <div style={{marginBottom:10,display:"flex",flexWrap:"wrap",gap:4}}>{clsS.map(s=><span key={s.id} style={{fontSize:11,background:"#f1f5f9",borderRadius:6,padding:"2px 8px"}}>{s.name.split(" ")[0]}</span>)}{(cls.class_member_names||[]).map((n,i)=><span key={"m"+i} style={{fontSize:11,background:"#eff6ff",color:"#3b82f6",borderRadius:6,padding:"2px 8px"}}>{n.split(" ")[0]}</span>)}</div>
+        <div style={{marginBottom:10,display:"flex",flexWrap:"wrap",gap:4}}>{clsS.map(s=><span key={s.id} style={{fontSize:11,background:"#f1f5f9",borderRadius:6,padding:"2px 8px"}}>{s.name.split(" ")[0]}</span>)}</div>
         <div style={S.cardActions}><button style={S.btnSm} onClick={()=>setDC(cls)}>Scheda</button></div>
       </div>);
     })}</div>))}
     {editModal&&isAdmin&&<StudentModal user={user} teachers={teachers} student={editModal==="add"?null:editModal} onSave={s=>{editModal==="add"?onAdd(s):onUpdate(s);setEdit(null);}} onClose={()=>setEdit(null)}/>}
     {confirm&&<ConfirmModal title="Archivia studente" text="Verrà spostato nell'archivio." onConfirm={()=>{onArchive(confirm);setConfirm(null);}} onClose={()=>setConfirm(null)}/>}
     {confirmTrash&&<ConfirmModal title="Elimina studente" text="Lo studente andrà nel cestino. Potrai recuperarlo o eliminarlo definitivamente." onConfirm={()=>{onTrash(confirmTrash);setConfirmTrash(null);}} onClose={()=>setConfirmTrash(null)}/>}
-    {detailStudent&&<StudentDetailModal student={detailStudent} lessons={lessons.filter(l=>l.student_id===detailStudent.id)} isAdmin={isAdmin} onNewPackage={onNewPackage} onClose={()=>setDS(null)}/>}
+    {detailStudent&&<StudentDetailModal student={detailStudent} lessons={lessons.filter(l=>l.student_id===detailStudent.id)} onClose={()=>setDS(null)}/>}
     {detailClass&&<ClassDetailModal cls={detailClass} students={students.filter(s=>(detailClass.student_ids||[]).includes(s.id))} classLessons={classLessons.filter(l=>l.class_id===detailClass.id)} onClose={()=>setDC(null)}/>}
   </div>);
 }
 
 function StudentModal({user,teachers,student,onSave,onClose}) {
-  const [form,setForm]=useState(student||{name:"",level:1,teacher_id:user.role==="admin"?"":user.id,phone:"",email:"",company:"",notes:"",package_total:10,package_used:0,is_class_student:false,enrollment_date:""});
+  const [form,setForm]=useState(student||{name:"",level:1,teacher_id:user.role==="admin"?"":user.id,phone:"",email:"",company:"",notes:"",package_total:10,package_used:0,is_class_student:false});
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   return (<Overlay onClose={onClose}>
     <h2 style={S.modalTitle}>{student?"Modifica Studente":"Nuovo Studente"}</h2>
     <div style={S.field}><label style={S.label}>Nome completo *</label><input style={S.input} value={form.name} onChange={e=>set("name",e.target.value)} placeholder="Es. Mario Rossi"/></div>
     <div style={S.fieldRow}><div style={S.field}><label style={S.label}>Livello (1–50)</label><select style={S.input} value={form.level} onChange={e=>set("level",Number(e.target.value))}>{LEVELS.map(l=><option key={l} value={l}>Livello {l}</option>)}</select></div><div style={S.field}><label style={S.label}>Telefono</label><input style={S.input} value={form.phone||""} onChange={e=>set("phone",e.target.value)} placeholder="333-0000000"/></div></div>
-    <div style={S.fieldRow}><div style={S.field}><label style={S.label}>Email</label><input style={S.input} type="email" value={form.email||""} onChange={e=>set("email",e.target.value)} placeholder="studente@email.it"/></div><div style={S.field}><label style={S.label}>Data iscrizione</label><input style={S.input} type="date" value={form.enrollment_date||""} onChange={e=>set("enrollment_date",e.target.value)}/></div></div>
+    <div style={S.field}><label style={S.label}>Email</label><input style={S.input} type="email" value={form.email||""} onChange={e=>set("email",e.target.value)} placeholder="studente@email.it"/></div>
     <div style={S.field}><label style={S.label}>Azienda</label><input style={S.input} value={form.company||""} onChange={e=>set("company",e.target.value)} placeholder="Es. Acme Srl (opzionale)"/></div>
     {user.role==="admin"&&<div style={{background:"#f0f9ff",borderRadius:10,padding:"10px 14px",marginBottom:14}}><label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:13,fontWeight:600,color:"#0369a1"}}><input type="checkbox" checked={form.is_class_student||false} onChange={e=>set("is_class_student",e.target.checked)}/> 👥 Studente di classe aziendale (non compare nelle lezioni individuali)</label></div>}
     <div style={S.fieldRow}><div style={S.field}><label style={S.label}>Lezioni pacchetto</label><input type="number" min="1" style={S.input} value={form.package_total||10} onChange={e=>set("package_total",Number(e.target.value))}/></div><div style={S.field}><label style={S.label}>Già usate</label><input type="number" min="0" style={S.input} value={form.package_used||0} onChange={e=>set("package_used",Number(e.target.value))}/></div></div>
@@ -609,42 +493,16 @@ function StudentModal({user,teachers,student,onSave,onClose}) {
   </Overlay>);
 }
 
-function StudentDetailModal({student,lessons,isAdmin,onNewPackage,onClose}) {
+function StudentDetailModal({student,lessons,onClose}) {
   const sorted=[...lessons].sort((a,b)=>a.date.localeCompare(b.date));
-  const [showHistory,setShowHistory]=useState(false);
-  const [newPkgModal,setNewPkgModal]=useState(false);
-  const [newPkgTotal,setNewPkgTotal]=useState(10);
-  const history=student.package_history||[];
-  const infoFields=[["Livello",`Livello ${student.level}`],["Telefono",student.phone||"—"],["Email",student.email||"—"],["Azienda",student.company||"—"],[" Note",student.notes||"—"]];
-  if(student.enrollment_date) infoFields.splice(2,0,["Iscrizione",fmtDate(student.enrollment_date)]);
   return (<Overlay onClose={onClose} wide>
     <h2 style={S.modalTitle}>Scheda: {student.name}</h2>
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>{infoFields.map(([k,v])=>(<div key={k} style={{background:"#f9fafb",borderRadius:8,padding:"10px 14px"}}><div style={{fontSize:11,color:"#9ca3af",marginBottom:2}}>{k.trim()}</div><div style={{fontSize:13,fontWeight:600,wordBreak:"break-all"}}>{v}</div></div>))}</div>
-    <div style={{background:"#f0fdf4",borderRadius:10,padding:"10px 14px",marginBottom:10,fontSize:13,color:"#166534",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-      <span>📦 <strong>{student.package_used}/{student.package_total}</strong> lezioni · <strong style={{color:pkgRemaining(student)<=3?"#ef4444":"#10b981"}}>{pkgRemaining(student)} rimaste</strong></span>
-      {isAdmin&&<button style={{...S.btnSm,background:"#6366f120",color:"#6366f1",border:"1px solid #6366f130",cursor:"pointer"}} onClick={()=>setNewPkgModal(true)}>📦 Nuovo pacchetto</button>}
-    </div>
-    {history.length>0&&<div style={{marginBottom:12}}>
-      <button onClick={()=>setShowHistory(h=>!h)} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:"#6b7280",padding:"4px 0",fontWeight:600,display:"flex",alignItems:"center",gap:4}}>
-        <span>{showHistory?"▲":"▶"}</span> Storico pacchetti ({history.length})
-      </button>
-      {showHistory&&<div style={{background:"#f8fafc",borderRadius:10,padding:10,marginTop:6}}>
-        {history.map((h,i)=><div key={i} style={{display:"flex",gap:12,fontSize:12,padding:"6px 0",borderBottom:i<history.length-1?"1px solid #f1f5f9":"none",color:"#374151"}}>
-          <span style={{color:"#9ca3af",minWidth:90}}>{h.closed_at?fmtDate(h.closed_at):"—"}</span>
-          <span>Pacchetto da <strong>{h.package_total}</strong> · <strong>{h.package_used}</strong> svolte</span>
-        </div>)}
-      </div>}
-    </div>}
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>{[["Livello",`Livello ${student.level}`],["Telefono",student.phone||"—"],["Email",student.email||"—"],["Azienda",student.company||"—"],["Note",student.notes||"—"]].map(([k,v])=>(<div key={k} style={{background:"#f9fafb",borderRadius:8,padding:"10px 14px"}}><div style={{fontSize:11,color:"#9ca3af",marginBottom:2}}>{k}</div><div style={{fontSize:13,fontWeight:600,wordBreak:"break-all"}}>{v}</div></div>))}</div>
+    <div style={{background:"#f0fdf4",borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:13,color:"#166534"}}>📦 <strong>{student.package_used}/{student.package_total}</strong> lezioni · <strong style={{color:pkgRemaining(student)<=3?"#ef4444":"#10b981"}}>{pkgRemaining(student)} rimaste</strong></div>
     <div style={{...S.tableWrap,maxHeight:280,overflowY:"auto"}}><table style={S.table}><thead><tr><th style={S.th}>N°</th><th style={S.th}>Data</th><th style={S.th}>Ora</th><th style={S.th}>Argomento</th><th style={S.th}>Compiti</th><th style={S.th}>Modalità</th><th style={S.th}>Presenza</th></tr></thead>
       <tbody>{sorted.map((l,i)=><tr key={l.id} style={S.tr}><td style={{...S.td,fontWeight:700,color:"#6366f1"}}>{i+1}/{student.package_total}</td><td style={S.td}>{fmtDate(l.date)}</td><td style={S.td}><span style={S.timeBadge}>{l.time}</span></td><td style={S.td}>{l.topic}</td><td style={{...S.td,fontSize:12,color:"#6b7280"}}>{l.homework||"—"}</td><td style={S.td}><ModeBadge mode={l.mode} zoom={l.zoom_account}/></td><td style={S.td}><Pill ok={l.present}/></td></tr>)}</tbody>
     </table></div>
     <div style={{marginTop:16,textAlign:"right"}}><button style={S.btnSecondary} onClick={onClose}>Chiudi</button></div>
-    {newPkgModal&&<Overlay onClose={()=>setNewPkgModal(false)}>
-      <h2 style={S.modalTitle}>📦 Nuovo pacchetto</h2>
-      <p style={{fontSize:13,color:"#6b7280",marginBottom:16}}>Il pacchetto attuale ({student.package_used}/{student.package_total}) verrà salvato nello storico.</p>
-      <div style={S.field}><label style={S.label}>Numero lezioni del nuovo pacchetto</label><input type="number" min="1" style={S.input} value={newPkgTotal} onChange={e=>setNewPkgTotal(Number(e.target.value))}/></div>
-      <div style={S.modalActions}><button style={S.btnSecondary} onClick={()=>setNewPkgModal(false)}>Annulla</button><button style={{...S.btnPrimary,width:"auto"}} onClick={()=>{onNewPackage(student.id,newPkgTotal);setNewPkgModal(false);onClose();}}>Conferma</button></div>
-    </Overlay>}
   </Overlay>);
 }
 
@@ -653,7 +511,7 @@ function ClassDetailModal({cls,students,classLessons,onClose}) {
   return (<Overlay onClose={onClose} wide>
     <h2 style={S.modalTitle}>Scheda Classe: {cls.name}</h2>
     <div style={{background:"#f0fdf4",borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:13,color:"#166534"}}>📦 <strong>{cls.package_used}/{cls.package_total}</strong> · <strong style={{color:pkgRemaining(cls)<=3?"#ef4444":"#10b981"}}>{pkgRemaining(cls)} rimaste</strong> · {cls.schedule}</div>
-    <div style={{marginBottom:12,display:"flex",flexWrap:"wrap",gap:6}}>{students.map(s=><span key={s.id} style={{background:"#eff6ff",color:"#3b82f6",borderRadius:8,padding:"4px 12px",fontSize:13,fontWeight:600}}>{s.name} <LevelBadge level={s.level} small/></span>)}{(cls.class_member_names||[]).map((n,i)=><span key={"m"+i} style={{background:"#f0fdf4",color:"#16a34a",borderRadius:8,padding:"4px 12px",fontSize:13,fontWeight:600}}>👤 {n}</span>)}</div>
+    <div style={{marginBottom:12,display:"flex",flexWrap:"wrap",gap:6}}>{students.map(s=><span key={s.id} style={{background:"#eff6ff",color:"#3b82f6",borderRadius:8,padding:"4px 12px",fontSize:13,fontWeight:600}}>{s.name} <LevelBadge level={s.level} small/></span>)}</div>
     <div style={{...S.tableWrap,maxHeight:300,overflowY:"auto"}}><table style={S.table}><thead><tr><th style={S.th}>N°</th><th style={S.th}>Data</th><th style={S.th}>Argomento</th><th style={S.th}>Modalità</th><th style={S.th}>Presenze</th></tr></thead>
       <tbody>{sorted.map((l,i)=><tr key={l.id} style={S.tr}><td style={{...S.td,fontWeight:700,color:"#6366f1"}}>{i+1}/{cls.package_total}</td><td style={S.td}>{fmtDate(l.date)}</td><td style={S.td}>{l.topic}</td><td style={S.td}><ModeBadge mode={l.mode} zoom={l.zoom_account}/></td><td style={S.td}><div style={{display:"flex",gap:4,flexWrap:"wrap"}}>{students.map(s=>{const p=l.attendances?.[s.id]??false;return<span key={s.id} style={{padding:"2px 8px",borderRadius:12,fontSize:11,fontWeight:600,background:p?"#d1fae5":"#fee2e2",color:p?"#065f46":"#991b1b"}}>{p?"✓":"✗"} {s.name.split(" ")[0]}</span>;})}</div></td></tr>)}</tbody>
     </table></div>
@@ -741,7 +599,7 @@ function ClassesPage({user,students,classes,classLessons,teachers,isAdmin,onAddC
           <div style={S.cardTop}><div style={{...S.studentAvatar,background:"#f59e0b20",color:"#f59e0b",fontSize:20}}>👥</div><div style={{flex:1}}><div style={S.studentName}>{cls.name}</div><div style={S.studentMeta}>{teacher?.name||"—"} · {cls.schedule}</div></div></div>
           <div style={{marginBottom:12}}><div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}><span style={{color:"#6b7280"}}>Pacchetto</span><span style={{fontWeight:700}}>{cls.package_used}/{cls.package_total} · <span style={{color:rem<=3?"#ef4444":"#10b981"}}>{rem} rimaste</span></span></div><div style={{height:6,background:"#f1f5f9",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:`${Math.min(100,(cls.package_used/cls.package_total)*100)}%`,background:pkgColor(cls),borderRadius:3}}/></div></div>
           <div style={S.cardStats}><div style={S.miniStat}><span style={S.miniStatVal}>{clsS.length}</span><span style={S.miniStatLbl}>studenti</span></div><div style={S.miniStat}><span style={S.miniStatVal}>{clsL.length}/{cls.package_total}</span><span style={S.miniStatLbl}>lezioni</span></div></div>
-          <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:10}}>{clsS.map(s=><span key={s.id} style={{fontSize:11,background:"#f1f5f9",borderRadius:6,padding:"2px 8px"}}>{s.name.split(" ")[0]}</span>)}{(cls.class_member_names||[]).map((n,i)=><span key={"m"+i} style={{fontSize:11,background:"#eff6ff",color:"#3b82f6",borderRadius:6,padding:"2px 8px"}}>{n.split(" ")[0]}</span>)}</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:10}}>{clsS.map(s=><span key={s.id} style={{fontSize:11,background:"#f1f5f9",borderRadius:6,padding:"2px 8px"}}>{s.name.split(" ")[0]}</span>)}</div>
           <div style={S.cardActions} onClick={e=>e.stopPropagation()}>{isAdmin&&<button style={S.btnSm} onClick={()=>setCM(cls)}>Modifica</button>}{isAdmin&&<button style={{...S.btnSm,...S.btnDanger}} onClick={()=>setConfirm({type:"class",id:cls.id})}>Elimina</button>}</div>
         </div>);
       })}</div>)}
@@ -752,9 +610,8 @@ function ClassesPage({user,students,classes,classLessons,teachers,isAdmin,onAddC
         <div style={{display:"flex",alignItems:"center",gap:12}}><div style={{background:"#f0fdf4",borderRadius:10,padding:"8px 16px",fontSize:13,color:"#166534",fontWeight:600}}>📦 {activeClass?.package_used}/{activeClass?.package_total} · {pkgRemaining(activeClass)} rimaste</div><button style={{...S.btnPrimary,width:"auto"}} onClick={()=>setLM("add")}>+ Nuova Lezione</button></div>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"240px 1fr",gap:24}}>
-        <div><h2 style={S.sectionTitle}>Partecipanti ({classStudents.length+(activeClass?.class_member_names||[]).length})</h2>
+        <div><h2 style={S.sectionTitle}>Studenti ({classStudents.length})</h2>
           {classStudents.map(st=>(<div key={st.id} style={{background:"white",borderRadius:12,padding:"12px 16px",border:"1px solid #f1f5f9",display:"flex",alignItems:"center",gap:10,marginBottom:8}}><div style={{...S.studentAvatar,width:34,height:34,fontSize:12}}>{st.name.split(" ").map(n=>n[0]).join("").slice(0,2)}</div><div style={{flex:1}}><div style={{fontWeight:600,fontSize:14}}>{st.name}</div></div><LevelBadge level={st.level}/></div>))}
-          {(activeClass?.class_member_names||[]).map((n,i)=>(<div key={"m"+i} style={{background:"#f0fdf4",borderRadius:12,padding:"12px 16px",border:"1px solid #bbf7d0",display:"flex",alignItems:"center",gap:10,marginBottom:8}}><div style={{...S.studentAvatar,width:34,height:34,fontSize:12,background:"#16a34a20",color:"#16a34a"}}>{n.split(" ").map(x=>x[0]).join("").slice(0,2)}</div><div style={{flex:1}}><div style={{fontWeight:600,fontSize:14}}>{n}</div><div style={{fontSize:11,color:"#9ca3af"}}>Partecipante</div></div></div>))}
         </div>
         <div><h2 style={S.sectionTitle}>Registro ({thisLessons.length}/{activeClass?.package_total})</h2>
           {thisLessons.length===0?<Empty text="Nessuna lezione"/>:(<div style={{display:"flex",flexDirection:"column",gap:12}}>
@@ -787,23 +644,16 @@ function ClassesPage({user,students,classes,classLessons,teachers,isAdmin,onAddC
 }
 
 function ClassModal({user,students,teachers,cls,onSave,onClose}) {
-  const [form,setForm]=useState(cls||{name:"",teacher_id:user.role==="admin"?"":user.id,student_ids:[],class_member_names:cls?.class_member_names||[],schedule:"",company:"",package_total:20,package_used:0});
-  const [newMember,setNewMember]=useState("");
+  const [form,setForm]=useState(cls||{name:"",teacher_id:user.role==="admin"?"":user.id,student_ids:[],schedule:"",company:"",package_total:20,package_used:0});
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   const toggle=id=>setForm(f=>({...f,student_ids:f.student_ids.includes(id)?f.student_ids.filter(x=>x!==id):[...f.student_ids,id]}));
-  const addMember=()=>{const n=newMember.trim();if(!n)return;setForm(f=>({...f,class_member_names:[...(f.class_member_names||[]),n]}));setNewMember("");};
-  const removeMember=i=>setForm(f=>({...f,class_member_names:f.class_member_names.filter((_,idx)=>idx!==i)}));
   const avail=students.filter(s=>s.is_class_student);
   return (<Overlay onClose={onClose} wide>
     <h2 style={S.modalTitle}>{cls?"Modifica Classe":"Nuova Classe"}</h2>
     <div style={S.fieldRow}><div style={S.field}><label style={S.label}>Nome classe *</label><input style={S.input} value={form.name} onChange={e=>set("name",e.target.value)} placeholder="Es. Gruppo A1 Mattino"/></div><div style={S.field}><label style={S.label}>Azienda</label><input style={S.input} value={form.company||""} onChange={e=>set("company",e.target.value)} placeholder="Es. Acme Srl"/></div></div>
     <div style={S.field}><label style={S.label}>Orario ricorrente</label><input style={S.input} value={form.schedule||""} onChange={e=>set("schedule",e.target.value)} placeholder="Es. Lunedì 09:00"/></div>
     <div style={S.fieldRow}><div style={S.field}><label style={S.label}>Lezioni pacchetto</label><input type="number" min="1" style={S.input} value={form.package_total||20} onChange={e=>set("package_total",Number(e.target.value))}/></div>{user.role==="admin"&&<div style={S.field}><label style={S.label}>Insegnante</label><select style={S.input} value={form.teacher_id||""} onChange={e=>set("teacher_id",e.target.value)}><option value="">— Seleziona —</option>{teachers.filter(t=>t.role==="teacher").map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></div>}</div>
-    <div style={S.field}><label style={S.label}>👥 Partecipanti della classe <span style={{fontWeight:400,color:"#9ca3af",fontSize:12}}>(nomi liberi, non studenti individuali)</span></label>
-      <div style={{display:"flex",gap:8,marginBottom:8}}><input style={{...S.input,flex:1}} value={newMember} onChange={e=>setNewMember(e.target.value)} onKeyDown={e=>e.key==="Enter"&&(e.preventDefault(),addMember())} placeholder="Es. Mario Rossi — premi Invio per aggiungere"/><button type="button" style={{...S.btnPrimary,width:"auto",padding:"10px 16px"}} onClick={addMember}>+</button></div>
-      {(form.class_member_names||[]).length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>{(form.class_member_names||[]).map((n,i)=>(<span key={i} style={{display:"inline-flex",alignItems:"center",gap:6,background:"#eff6ff",color:"#3b82f6",borderRadius:8,padding:"5px 12px",fontSize:13,fontWeight:600}}>{n}<button type="button" onClick={()=>removeMember(i)} style={{background:"none",border:"none",cursor:"pointer",color:"#93c5fd",fontSize:14,padding:0,lineHeight:1}}>×</button></span>))}</div>}
-    </div>
-    {avail.length>0&&<div style={S.field}><label style={S.label}>Studenti del sistema da includere <span style={{fontWeight:400,color:"#9ca3af",fontSize:12}}>(opzionale)</span></label><div style={{display:"flex",flexWrap:"wrap",gap:8,marginTop:8}}>{avail.map(s=>(<label key={s.id} style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",background:form.student_ids.includes(s.id)?"#6366f115":"#f8fafc",border:`1.5px solid ${form.student_ids.includes(s.id)?"#6366f1":"#e2e8f0"}`,borderRadius:8,padding:"6px 12px",fontSize:13}}><input type="checkbox" checked={form.student_ids.includes(s.id)} onChange={()=>toggle(s.id)}/>{s.name} <LevelBadge level={s.level} small/></label>))}</div></div>}
+    <div style={S.field}><label style={S.label}>Studenti della classe</label><div style={{display:"flex",flexWrap:"wrap",gap:8,marginTop:8}}>{avail.map(s=>(<label key={s.id} style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",background:form.student_ids.includes(s.id)?"#6366f115":"#f8fafc",border:`1.5px solid ${form.student_ids.includes(s.id)?"#6366f1":"#e2e8f0"}`,borderRadius:8,padding:"6px 12px",fontSize:13}}><input type="checkbox" checked={form.student_ids.includes(s.id)} onChange={()=>toggle(s.id)}/>{s.name} <LevelBadge level={s.level} small/></label>))}</div></div>
     <div style={S.modalActions}><button style={S.btnSecondary} onClick={onClose}>Annulla</button><button style={{...S.btnPrimary,width:"auto"}} disabled={!form.name} onClick={()=>onSave(form)}>{cls?"Salva":"Crea Classe"}</button></div>
   </Overlay>);
 }
@@ -828,16 +678,9 @@ function ClassLessonModal({cls,students,lesson,onSave,onClose}) {
 }
 
 // ── CALENDARIO — identico all'originale ───────────────────────────
-function CalendarPage({user,students,lessons,classLessons,classes,teachers,isAdmin,notes,onAddNote,onUpdateNote,onDeleteNote,onImportLesson,allStudents,allTeachers}) {
+function CalendarPage({user,students,lessons,classLessons,classes,teachers,isAdmin,notes,onAddNote,onUpdateNote,onDeleteNote}) {
   const [cur,setCur]=useState(()=>{ const d=new Date(); return new Date(d.getFullYear(),d.getMonth(),1); });
   const [selDay,setSel]=useState(null);const [filterT,setFT]=useState("all");const [noteModal,setNM]=useState(null);
-  const [gcStatus,setGcStatus]=useState("idle");
-  const [gcMessage,setGcMsg]=useState("");
-  const [gcCount,setGcCount]=useState(null);
-
-  const GOOGLE_CLIENT_ID = "389289626389-tehsnne7dqg4mnff2pu8npc8ce26382v.apps.googleusercontent.com";
-  const SCOPES = "https://www.googleapis.com/auth/calendar.readonly";
-
   const year=cur.getFullYear(),month=cur.getMonth();
   const daysInMonth=new Date(year,month+1,0).getDate();
   const startOffset=(new Date(year,month,1).getDay()+6)%7;
@@ -851,109 +694,14 @@ function CalendarPage({user,students,lessons,classLessons,classes,teachers,isAdm
   const teacherList=teachers.filter(t=>t.role==="teacher");
   const tc=tid=>teachers.find(t=>t.id===tid)?.color||"#6366f1";
   const monthNotes=notes.filter(n=>n.date.startsWith(`${year}-${String(month+1).padStart(2,"0")}`));
-
-  const loadGapiScript = () => new Promise((resolve,reject)=>{
-    if(window.gapi){resolve();return;}
-    const s=document.createElement("script");s.src="https://apis.google.com/js/api.js";
-    s.onload=resolve;s.onerror=reject;document.head.appendChild(s);
-  });
-  const loadGisScript = () => new Promise((resolve,reject)=>{
-    if(window.google?.accounts){resolve();return;}
-    const s=document.createElement("script");s.src="https://accounts.google.com/gsi/client";
-    s.onload=resolve;s.onerror=reject;document.head.appendChild(s);
-  });
-  const parseGoogleEvent = (event) => {
-    const start=event.start?.dateTime||event.start?.date;
-    const end=event.end?.dateTime||event.end?.date;
-    if(!start) return null;
-    const startDate=start.split("T")[0];
-    const startTime=start.includes("T")?start.split("T")[1].slice(0,5):"09:00";
-    let duration=60;
-    if(end){const s=new Date(start),e=new Date(end);const mins=Math.round((e-s)/60000);if(mins>=15&&mins<=480)duration=mins;}
-    const title=(event.summary||"").toLowerCase();
-    const mode=title.includes("onl.")||title.includes("online")||title.includes("zoom")?"online":"presenza";
-    return {startDate,startTime,duration,summary:event.summary||"",mode};
-  };
-  const findStudent = (eventSummary) => {
-    const active=(allStudents||students).filter(s=>s.active&&!s.deleted);
-    const titleLower=eventSummary.toLowerCase();
-    return active.find(s=>s.name.toLowerCase().split(" ").filter(p=>p.length>2).some(p=>titleLower.includes(p)));
-  };
-  const syncGoogleCalendar = async () => {
-    setGcStatus("loading");setGcMsg("Caricamento librerie Google…");setGcCount(null);
-    try {
-      await Promise.all([loadGapiScript(),loadGisScript()]);
-      await new Promise((res,rej)=>window.gapi.load("client",{callback:res,onerror:rej}));
-      await window.gapi.client.init({});
-      await window.gapi.client.load("https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest");
-      setGcMsg("Accesso a Google Calendar…");
-      const token = await new Promise((resolve,reject)=>{
-        const client=window.google.accounts.oauth2.initTokenClient({
-          client_id:GOOGLE_CLIENT_ID,scope:SCOPES,
-          callback:(resp)=>{if(resp.error)reject(new Error(resp.error));else resolve(resp.access_token);}
-        });
-        client.requestAccessToken({prompt:""});
-      });
-      window.gapi.client.setToken({access_token:token});
-      setGcMsg("Lettura calendari…");
-      const calListResp=await window.gapi.client.calendar.calendarList.list();
-      const calendars=calListResp.result.items||[];
-      const timeMin=new Date(year,month,1).toISOString();
-      const timeMax=new Date(year,month+4,0).toISOString();
-      setGcMsg("Importazione lezioni…");
-      let imported=0,skipped=0,errors=[];
-      for(const cal of calendars){
-        const calName=cal.summary||"";
-        const matchedTeacher=(allTeachers||teachers).find(t=>t.role==="teacher"&&(
-          calName.toLowerCase().includes(t.name.toLowerCase().split(" ")[0].toLowerCase())||
-          t.name.toLowerCase().includes(calName.toLowerCase().split(/[\s_]/)[0].toLowerCase())
-        ));
-        if(!matchedTeacher) continue;
-        const eventsResp=await window.gapi.client.calendar.events.list({
-          calendarId:cal.id,timeMin,timeMax,singleEvents:true,orderBy:"startTime",maxResults:500
-        });
-        for(const event of eventsResp.result.items||[]){
-          const parsed=parseGoogleEvent(event);
-          if(!parsed) continue;
-          const student=findStudent(parsed.summary);
-          if(!student){errors.push(`"${parsed.summary}" (${matchedTeacher.name})`);skipped++;continue;}
-          const dup=lessons.find(l=>l.student_id===student.id&&l.date===parsed.startDate&&l.time===parsed.startTime);
-          if(dup){skipped++;continue;}
-          try{
-            await onImportLesson({student_id:student.id,teacher_id:matchedTeacher.id,date:parsed.startDate,time:parsed.startTime,duration:parsed.duration,topic:parsed.summary,homework:"",present:true,mode:parsed.mode,zoom_account:""});
-            imported++;
-          }catch(e){skipped++;}
-        }
-      }
-      setGcStatus("done");setGcCount({imported,skipped,errors});
-      setGcMsg(imported>0?`✅ Importate ${imported} nuove lezioni`:"✅ Nessuna nuova lezione da importare");
-    }catch(e){setGcStatus("error");setGcMsg("Errore: "+(e.message||"problema con Google Calendar"));}
-  };
-
   return (<div style={S.page}>
     <div style={S.pageHeader}>
       <div><h1 style={S.pageTitle}>📅 Calendario</h1><p style={S.pageSub}>{isAdmin?"Vista per insegnante (colori)":`Lezioni di ${user.name}`}</p></div>
-      <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+      <div style={{display:"flex",gap:8,alignItems:"center"}}>
         {isAdmin&&<select style={{...S.input,width:"auto",minWidth:180}} value={filterT} onChange={e=>setFT(e.target.value)}><option value="all">Tutti gli insegnanti</option>{teacherList.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select>}
-        {isAdmin&&(
-          <button style={{...S.btnPrimary,width:"auto",padding:"8px 16px",background:gcStatus==="error"?"#ef4444":gcStatus==="done"?"#10b981":"#4285f4",opacity:gcStatus==="loading"?0.7:1}} disabled={gcStatus==="loading"} onClick={syncGoogleCalendar}>
-            {gcStatus==="loading"?"⏳ Sincronizzazione…":gcStatus==="done"?"✅ Sincronizzato":"🔄 Sincronizza Google Calendar"}
-          </button>
-        )}
         <button style={{...S.btnPrimary,width:"auto",padding:"8px 16px"}} onClick={()=>setNM("add")}>+ Nota</button>
       </div>
     </div>
-    {gcStatus!=="idle"&&(
-      <div style={{background:gcStatus==="error"?"#fee2e2":gcStatus==="done"?"#f0fdf4":"#eff6ff",border:`1px solid ${gcStatus==="error"?"#fca5a5":gcStatus==="done"?"#86efac":"#93c5fd"}`,borderRadius:12,padding:"12px 18px",marginBottom:16,fontSize:13}}>
-        <div style={{fontWeight:600,color:gcStatus==="error"?"#dc2626":gcStatus==="done"?"#166534":"#1d4ed8",marginBottom:gcCount?.errors?.length>0?6:0}}>{gcMessage}</div>
-        {gcCount?.errors?.length>0&&(<div>
-          <div style={{fontSize:12,color:"#92400e",fontWeight:600,marginBottom:4}}>Lezioni non abbinate ({gcCount.errors.length}):</div>
-          {gcCount.errors.slice(0,5).map((e,i)=><div key={i} style={{fontSize:11,color:"#b45309"}}>• {e}</div>)}
-          {gcCount.errors.length>5&&<div style={{fontSize:11,color:"#9ca3af"}}>…e altri {gcCount.errors.length-5}</div>}
-        </div>)}
-        {gcStatus==="done"&&<button style={{...S.btnSecondary,marginTop:8,padding:"4px 12px",fontSize:12}} onClick={()=>{setGcStatus("idle");setGcMsg("");setGcCount(null);}}>Chiudi</button>}
-      </div>
-    )}
     {isAdmin&&(<div style={{display:"flex",gap:10,marginBottom:18,flexWrap:"wrap"}}>
       {teacherList.map(t=>(<div key={t.id} style={{display:"flex",alignItems:"center",gap:6,background:"white",borderRadius:8,padding:"6px 12px",border:`2px solid ${t.color}30`,fontSize:13}}><span style={{width:10,height:10,borderRadius:"50%",background:t.color,display:"inline-block"}}/><span style={{fontWeight:600,color:t.color}}>{t.name}</span></div>))}
       <div style={{display:"flex",alignItems:"center",gap:6,background:"white",borderRadius:8,padding:"6px 12px",border:"1px solid #f1f5f9",fontSize:13}}><span style={{width:10,height:10,borderRadius:"50%",background:"#94a3b8",display:"inline-block"}}/><span style={{color:"#6b7280"}}>Note personali</span></div>
@@ -980,7 +728,7 @@ function CalendarPage({user,students,lessons,classLessons,classes,teachers,isAdm
           })}
         </div>
         <div style={{padding:"8px 16px 12px",borderTop:"1px solid #f8fafc",display:"flex",gap:12,flexWrap:"wrap"}}>
-          {isAdmin?teacherList.map(t=><div key={t.id} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:t.color}}><span style={{width:8,height:8,borderRadius:"50%",background:t.color,display:"inline-block"}}/>{t.name}</div>):[[" #6366f1","Individuali"],["#f59e0b","Classi"]].map(([c,l])=><div key={l} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:"#6b7280"}}><span style={{width:8,height:8,borderRadius:"50%",background:c,display:"inline-block"}}/>{l}</div>)}
+          {isAdmin?teacherList.map(t=><div key={t.id} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:t.color}}><span style={{width:8,height:8,borderRadius:"50%",background:t.color,display:"inline-block"}}/>{t.name}</div>):[["#6366f1","Individuali"],["#f59e0b","Classi"]].map(([c,l])=><div key={l} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:"#6b7280"}}><span style={{width:8,height:8,borderRadius:"50%",background:c,display:"inline-block"}}/>{l}</div>)}
           <div style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:"#6b7280"}}><span style={{width:8,height:8,borderRadius:"50%",background:"#94a3b8",display:"inline-block"}}/>Note</div>
         </div>
       </div>
@@ -993,15 +741,16 @@ function CalendarPage({user,students,lessons,classLessons,classes,teachers,isAdm
             <h3 style={{margin:0,fontSize:14,fontWeight:700}}>{new Date(selData.ds).toLocaleDateString("it-IT",{weekday:"long",day:"numeric",month:"long"})}</h3>
             <button style={{...S.btnPrimary,width:"auto",padding:"5px 12px",fontSize:12}} onClick={()=>setNM({date:selData.ds,text:""})}>+ Nota</button>
           </div>
-          {selData.dayNotes.length>0&&<div style={{marginBottom:12}}><div style={{fontSize:11,fontWeight:700,color:"#9ca3af",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>📌 Note</div>
+          {selData.dayNotes.length>0&&<div style={{marginBottom:12}}>
+            <div style={{fontSize:11,fontWeight:700,color:"#9ca3af",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>📌 Note</div>
             {selData.dayNotes.map(n=><div key={n.id} style={{background:"#fffbeb",borderRadius:10,padding:"10px 12px",marginBottom:6,borderLeft:"3px solid #f59e0b",fontSize:13,display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}><span style={{flex:1}}>{n.text}</span><div style={{display:"flex",gap:4,flexShrink:0}}><button style={S.iconBtn} onClick={()=>setNM(n)}>✏️</button><button style={S.iconBtn} onClick={()=>onDeleteNote(n.id)}>🗑️</button></div></div>)}
           </div>}
           {selData.indiv.length===0&&selData.cls.length===0?<div style={{textAlign:"center",padding:"16px 0",color:"#9ca3af",fontSize:13}}>Nessuna lezione</div>:<>
             {selData.indiv.length>0&&<><div style={{fontSize:11,fontWeight:700,color:"#9ca3af",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>Individuali</div>
-              {[...selData.indiv].sort((a,b)=>(a.time||"").localeCompare(b.time||"")).map(l=>{const st=students.find(s=>s.id===l.student_id);const t=teachers.find(t=>t.id===l.teacher_id);return<div key={l.id} style={{background:"#f8fafc",borderRadius:10,padding:"10px 12px",marginBottom:8,borderLeft:`3px solid ${tc(l.teacher_id)}`}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}><span style={S.timeBadge}>{l.time}</span><span style={{fontSize:11,color:"#6b7280"}}>{l.duration}min</span></div><div style={{fontWeight:600,fontSize:13}}>{st?.name||"—"}</div><div style={{fontSize:12,color:"#6b7280"}}>{l.topic}</div>{isAdmin&&<div style={{fontSize:11,color:tc(l.teacher_id),fontWeight:600,marginTop:2}}>👤 {t?.name}</div>}</div>;})}
+              {[...selData.indiv].sort((a,b)=>(a.time||"").localeCompare(b.time||"")).map(l=>{const st=students.find(s=>s.id===l.student_id);const t=teachers.find(t=>t.id===l.teacher_id);return<div key={l.id} style={{background:"#f8fafc",borderRadius:10,padding:"10px 12px",marginBottom:8,borderLeft:`3px solid ${tc(l.teacher_id)}`}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}><span style={S.timeBadge}>{l.time}</span><div style={{display:"flex",gap:6,alignItems:"center"}}><ModeBadge mode={l.mode}/><Pill ok={l.present}/></div></div><div style={{fontWeight:600,fontSize:13}}>{st?.name||"—"}</div><div style={{fontSize:12,color:"#6b7280"}}>{l.topic} · {l.duration}min</div>{isAdmin&&<div style={{fontSize:11,color:tc(l.teacher_id),fontWeight:600,marginTop:2}}>👤 {t?.name}</div>}</div>;})}
             </>}
             {selData.cls.length>0&&<><div style={{fontSize:11,fontWeight:700,color:"#9ca3af",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6,marginTop:8}}>Classi</div>
-              {[...selData.cls].sort((a,b)=>(a.time||"").localeCompare(b.time||"")).map(l=>{const cls=classes.find(c=>c.id===l.class_id);const t=teachers.find(t=>t.id===l.teacher_id);const att=Object.values(l.attendances||{}).filter(Boolean).length;const tot2=Object.keys(l.attendances||{}).length;return<div key={l.id} style={{background:"#fffbeb",borderRadius:10,padding:"10px 12px",marginBottom:8,borderLeft:`3px solid ${tc(l.teacher_id)}`}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}><span style={S.timeBadge}>{l.time}</span><span style={{fontSize:12,color:"#6b7280"}}>{att}/{tot2} presenti</span></div><div style={{fontWeight:600,fontSize:13}}>{cls?.name||"—"} 👥</div><div style={{fontSize:12,color:"#6b7280"}}>{l.topic}</div>{isAdmin&&<div style={{fontSize:11,color:tc(l.teacher_id),fontWeight:600,marginTop:2}}>👤 {t?.name}</div>}</div>;})}
+              {[...selData.cls].sort((a,b)=>(a.time||"").localeCompare(b.time||"")).map(l=>{const cls=classes.find(c=>c.id===l.class_id);const t=teachers.find(t=>t.id===l.teacher_id);const att=Object.values(l.attendances||{}).filter(Boolean).length;const tot2=Object.keys(l.attendances||{}).length;return<div key={l.id} style={{background:"#fffbeb",borderRadius:10,padding:"10px 12px",marginBottom:8,borderLeft:`3px solid ${tc(l.teacher_id)}`}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}><span style={S.timeBadge}>{l.time}</span><div style={{display:"flex",gap:6,alignItems:"center"}}><ModeBadge mode={l.mode}/><span style={{fontSize:12,color:"#6b7280"}}>{att}/{tot2} presenti</span></div></div><div style={{fontWeight:600,fontSize:13}}>{cls?.name||"—"} 👥</div><div style={{fontSize:12,color:"#6b7280"}}>{l.topic} · {l.duration}min</div>{isAdmin&&<div style={{fontSize:11,color:tc(l.teacher_id),fontWeight:600,marginTop:2}}>👤 {t?.name}</div>}</div>;})}
             </>}
           </>}
         </>)}
@@ -1010,6 +759,7 @@ function CalendarPage({user,students,lessons,classLessons,classes,teachers,isAdm
     {noteModal&&<NoteModal note={noteModal==="add"?{date:today(),text:""}:noteModal} isNew={noteModal==="add"||!noteModal.id} onSave={n=>{noteModal==="add"||!noteModal.id?onAddNote(n):onUpdateNote(n);setNM(null);}} onClose={()=>setNM(null)}/>}
   </div>);
 }
+
 function NoteModal({note,isNew,onSave,onClose}) {
   const [form,setForm]=useState({date:note.date||today(),text:note.text||"",...(note.id?{id:note.id}:{})});
   return (<Overlay onClose={onClose}>
@@ -1062,11 +812,12 @@ function ReportsPage({user,students,classes,lessons,classLessons,teachers,isAdmi
 
 // ── REPORT STUDENTI ──────────────────────────────────────────────
 function StudentReportPage({user,students,lessons,isAdmin}) {
-  const [fStudent,setFStudent]=useState("");const [fYear,setFYear]=useState("");const [fMonth,setFMonth]=useState("");
+  const [fStudent,setFStudent]=useState("");const [fYear,setFYear]=useState("");const [fMonth,setFMonth]=useState("");const [viewMode,setVM]=useState("month");
   const myStudents=isAdmin?students:students.filter(s=>s.teacher_id===user.id);
   const myLessons=isAdmin?lessons:lessons.filter(l=>l.teacher_id===user.id);
   const years=[...new Set(myLessons.map(l=>l.date.slice(0,4)))].sort().reverse();
   const months=[...new Set(myLessons.filter(l=>!fYear||l.date.startsWith(fYear)).map(l=>l.date.slice(0,7)))].sort().reverse();
+  const selStudent=myStudents.find(s=>s.id===fStudent);
   const filteredLessons=myLessons.filter(l=>
     (!fStudent||l.student_id===fStudent)&&
     (!fYear||l.date.startsWith(fYear))&&
@@ -1113,15 +864,11 @@ function StudentReportPage({user,students,lessons,isAdmin}) {
 }
 
 // ── ARCHIVIO — identico all'originale ────────────────────────────
-function ArchivePage({students,teachers,archivedTeachers,lessons,onRestore,onTrash,onArchiveTeacher,onRestoreTeacher,onTrashTeacher}) {
-  const [restoreModal,setRM]=useState(null);const [selected,setSel]=useState(null);const [confirmTrash,setConfirmTrash]=useState(null);const [tab,setTab]=useState("students");
+function ArchivePage({students,teachers,lessons,onRestore,onTrash}) {
+  const [restoreModal,setRM]=useState(null);const [selected,setSel]=useState(null);const [confirmTrash,setConfirmTrash]=useState(null);
   return (<div style={S.page}>
-    <h1 style={S.pageTitle}>Archivio</h1><p style={S.pageSub}>Solo l'amministratore può accedere a questa sezione.</p>
-    <div style={{display:"flex",gap:8,marginBottom:20}}>{[["students","👤 Studenti Archiviati"],["teachers","🧑‍🏫 Insegnanti Archiviati"]].map(([id,label])=>(<button key={id} onClick={()=>setTab(id)} style={{padding:"8px 20px",borderRadius:10,border:"none",cursor:"pointer",fontWeight:600,fontSize:14,background:tab===id?"#8b5cf6":"#f1f5f9",color:tab===id?"white":"#374151"}}>{label}</button>))}</div>
-    {tab==="teachers"&&(<div>
-      {archivedTeachers.length===0?<Empty text="Nessun insegnante archiviato"/>:(<div style={S.tableWrap}><table style={S.table}><thead><tr><th style={S.th}>Nome</th><th style={S.th}>Email</th><th style={S.th}>Telefono</th><th style={S.th}>Azioni</th></tr></thead><tbody>{archivedTeachers.map(t=>(<tr key={t.id} style={S.tr}><td style={S.td}><strong>{t.name}</strong></td><td style={S.td}>{t.email}</td><td style={S.td}>{t.phone||"—"}</td><td style={S.td}><div style={{display:"flex",gap:6}}><button style={{...S.btnSm,background:"#10b98110",color:"#10b981",border:"1px solid #10b98130"}} onClick={()=>onRestoreTeacher(t.id)}>♻️ Ripristina</button><button style={{...S.btnSm,background:"#fee2e220",color:"#dc2626",border:"1px solid #fca5a5"}} onClick={()=>onTrashTeacher(t.id)}>🗑️ Cestino</button></div></td></tr>))}</tbody></table></div>)}
-    </div>)}
-    {tab==="students"&&students.length===0?<Empty text="L'archivio studenti è vuoto"/>:(tab==="students"&&<div style={S.cardGrid}>{students.map(student=>{
+    <h1 style={S.pageTitle}>Archivio Studenti</h1><p style={S.pageSub}>Solo l'amministratore può accedere a questa sezione.</p>
+    {students.length===0?<Empty text="L'archivio è vuoto"/>:(<div style={S.cardGrid}>{students.map(student=>{
       const sl=lessons.filter(l=>l.student_id===student.id);const teacher=teachers.find(t=>t.id===student.teacher_id);
       return(<div key={student.id} style={{...S.studentCard,borderLeft:"4px solid #8b5cf6"}}>
         <div style={S.cardTop}><div style={{...S.studentAvatar,background:"#8b5cf620",color:"#8b5cf6"}}>{student.name.split(" ").map(n=>n[0]).join("").slice(0,2)}</div><div style={{flex:1}}><div style={S.studentName}>{student.name}</div><div style={S.studentMeta}>Ultimo ins: {teacher?.name||"—"}</div></div><LevelBadge level={student.level}/></div>
@@ -1137,12 +884,11 @@ function ArchivePage({students,teachers,archivedTeachers,lessons,onRestore,onTra
   </div>);
 }
 
-function TrashPage({students,trashedTeachers,onRestore,onDeleteForever,onRestoreTeacher,onDeleteTeacherForever}) {
-  const [confirmDel,setConfirmDel]=useState(null);const [confirmDelT,setConfirmDelT]=useState(null);const [tab,setTab]=useState("students");
+function TrashPage({students,onRestore,onDeleteForever}) {
+  const [confirmDel,setConfirmDel]=useState(null);
   return (<div style={S.page}>
-    <h1 style={S.pageTitle}>🗑️ Cestino</h1><p style={S.pageSub}>Gli elementi nel cestino possono essere recuperati o eliminati definitivamente.</p>
-    <div style={{display:"flex",gap:8,marginBottom:20}}>{[["students",`👤 Studenti (${students.length})`],["teachers",`🧑‍🏫 Insegnanti (${(trashedTeachers||[]).length})`]].map(([id,label])=>(<button key={id} onClick={()=>setTab(id)} style={{padding:"8px 20px",borderRadius:10,border:"none",cursor:"pointer",fontWeight:600,fontSize:14,background:tab===id?"#ef4444":"#f1f5f9",color:tab===id?"white":"#374151"}}>{label}</button>))}</div>
-    {tab==="students"&&(students.length===0?<Empty text="Nessuno studente nel cestino"/>:(<div style={S.cardGrid}>{students.map(student=>{
+    <h1 style={S.pageTitle}>🗑️ Cestino</h1><p style={S.pageSub}>Gli studenti nel cestino possono essere recuperati o eliminati definitivamente.</p>
+    {students.length===0?<Empty text="Il cestino è vuoto"/>:(<div style={S.cardGrid}>{students.map(student=>{
       return(<div key={student.id} style={{...S.studentCard,borderLeft:"4px solid #ef4444",opacity:0.85}}>
         <div style={S.cardTop}><div style={{...S.studentAvatar,background:"#ef444420",color:"#ef4444"}}>{student.name.split(" ").map(n=>n[0]).join("").slice(0,2)}</div><div style={{flex:1}}><div style={S.studentName}>{student.name}</div><div style={S.studentMeta}>Livello {student.level}</div></div><LevelBadge level={student.level}/></div>
         <div style={{marginBottom:10,fontSize:12,color:"#6b7280",display:"flex",gap:12,flexWrap:"wrap"}}>{student.phone&&<span>📞 {student.phone}</span>}{student.email&&<span>✉️ {student.email}</span>}</div>
@@ -1151,10 +897,8 @@ function TrashPage({students,trashedTeachers,onRestore,onDeleteForever,onRestore
           <button style={{...S.btnSm,background:"#ef444420",color:"#ef4444",border:"1px solid #fca5a5"}} onClick={()=>setConfirmDel(student.id)}>❌ Elimina definitivamente</button>
         </div>
       </div>);
-    })}</div>))}
-    {tab==="teachers"&&((trashedTeachers||[]).length===0?<Empty text="Nessun insegnante nel cestino"/>:(<div style={S.tableWrap}><table style={S.table}><thead><tr><th style={S.th}>Nome</th><th style={S.th}>Email</th><th style={S.th}>Telefono</th><th style={S.th}>Azioni</th></tr></thead><tbody>{(trashedTeachers||[]).map(t=>(<tr key={t.id} style={S.tr}><td style={S.td}><strong>{t.name}</strong></td><td style={S.td}>{t.email}</td><td style={S.td}>{t.phone||"—"}</td><td style={S.td}><div style={{display:"flex",gap:6}}><button style={{...S.btnSm,background:"#10b98110",color:"#10b981",border:"1px solid #10b98130"}} onClick={()=>onRestoreTeacher(t.id)}>♻️ Ripristina</button><button style={{...S.btnSm,background:"#ef444420",color:"#ef4444",border:"1px solid #fca5a5"}} onClick={()=>setConfirmDelT(t.id)}>❌ Elimina definitivamente</button></div></td></tr>))}</tbody></table></div>))}
+    })}</div>)}
     {confirmDel&&<ConfirmModal title="Elimina definitivamente" text="Attenzione: questa operazione è irreversibile. Lo studente e tutti i suoi dati verranno eliminati per sempre." onConfirm={()=>{onDeleteForever(confirmDel);setConfirmDel(null);}} onClose={()=>setConfirmDel(null)}/>}
-    {confirmDelT&&<ConfirmModal title="Elimina insegnante definitivamente" text="Attenzione: questa operazione è irreversibile. L'insegnante e tutti i suoi dati verranno eliminati per sempre." onConfirm={()=>{onDeleteTeacherForever(confirmDelT);setConfirmDelT(null);}} onClose={()=>setConfirmDelT(null)}/>}
   </div>);
 }
 
@@ -1166,35 +910,23 @@ function RestoreModal({student,teachers,onRestore,onClose}) {
   </Overlay>);
 }
 
-function ColorPicker({color,onChange}) {
-  const [open,setOpen]=useState(false);
-  return (<div style={{position:"relative",display:"inline-block"}}>
-    <button onClick={()=>setOpen(o=>!o)} title="Cambia colore" style={{width:24,height:24,borderRadius:"50%",background:color,border:"2px solid #e2e8f0",cursor:"pointer",display:"block"}}/>
-    {open&&(<>
-      <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:999}}/>
-      <div style={{position:"absolute",top:30,left:0,zIndex:1000,background:"white",borderRadius:12,padding:10,boxShadow:"0 8px 30px rgba(0,0,0,0.15)",display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:6,width:188}}>
-        {T_COLORS.map(c=>(<button key={c} onClick={()=>{onChange(c);setOpen(false);}} style={{width:22,height:22,borderRadius:"50%",background:c,border:color===c?"3px solid #0f172a":"2px solid transparent",cursor:"pointer"}}/>))}
-      </div>
-    </>)}
-  </div>);
-}
 // ── AMMINISTRAZIONE — identica all'originale ──────────────────────
-function AdminPage({teachers,students,lessons,classLessons,onAddTeacher,onDeleteTeacher,onUpdateTeacher,onReassignStudent,onArchiveTeacher}) {
-  const [tm,setTM]=useState(false);const [confirm,setConfirm]=useState(null);const [confirmArchive,setConfirmArchive]=useState(null);const [rm,setRM]=useState(null);const [editT,setEditT]=useState(null);
+function AdminPage({teachers,students,lessons,classLessons,onAddTeacher,onDeleteTeacher,onUpdateTeacher,onReassignStudent}) {
+  const [tm,setTM]=useState(false);const [confirm,setConfirm]=useState(null);const [rm,setRM]=useState(null);const [editT,setEditT]=useState(null);
   const active=students.filter(s=>s.active);
   return (<div style={S.page}>
     <div style={S.pageHeader}><div><h1 style={S.pageTitle}>Amministrazione</h1><p style={S.pageSub}>Gestione insegnanti e riassegnazioni</p></div><button style={{...S.btnPrimary,width:"auto"}} onClick={()=>setTM(true)}>+ Nuovo Insegnante</button></div>
     <div style={S.section}><h2 style={S.sectionTitle}>Insegnanti</h2>
-      <div style={{...S.tableWrap,overflow:"visible"}}><table style={S.table}><thead><tr><th style={S.th}>Nome</th><th style={S.th}>Email</th><th style={S.th}>Telefono</th><th style={S.th}>Colore</th><th style={S.th}>Studenti</th><th style={S.th}>Lezioni</th><th style={S.th}></th></tr></thead>
-        <tbody>{teachers.map(t=>{
+      <div style={S.tableWrap}><table style={S.table}><thead><tr><th style={S.th}>Nome</th><th style={S.th}>Email</th><th style={S.th}>Telefono</th><th style={S.th}>Colore</th><th style={S.th}>Studenti</th><th style={S.th}>Lezioni</th><th style={S.th}></th></tr></thead>
+        <tbody>{teachers.filter(t=>t.role==="teacher").map(t=>{
           const lCount=lessons.filter(l=>l.teacher_id===t.id).length+classLessons.filter(l=>l.teacher_id===t.id).length;
           return(<tr key={t.id} style={S.tr}>
             <td style={S.td}><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{width:10,height:10,borderRadius:"50%",background:t.color,display:"inline-block"}}/><strong>{t.name}</strong></div></td>
             <td style={S.td}>{t.email}</td><td style={S.td}>{t.phone||"—"}</td>
-            <td style={S.td}><ColorPicker color={t.color} onChange={c=>onUpdateTeacher({...t,color:c})}/></td>
+            <td style={S.td}><div style={{display:"flex",gap:4}}>{T_COLORS.map(c=><button key={c} onClick={()=>onUpdateTeacher({...t,color:c})} style={{width:18,height:18,borderRadius:"50%",background:c,border:t.color===c?"2px solid #0f172a":"2px solid transparent",cursor:"pointer"}}/> )}</div></td>
             <td style={S.td}>{students.filter(s=>s.teacher_id===t.id&&s.active).length}</td>
             <td style={S.td}>{lCount}</td>
-            <td style={S.td}><div style={{display:"flex",gap:4}}><button style={S.iconBtn} onClick={()=>setEditT(t)}>✏️</button><button style={{...S.iconBtn,color:"#8b5cf6",fontSize:13}} onClick={()=>setConfirmArchive(t.id)} title="Archivia">🗄️</button><button style={{...S.iconBtn,color:"#ef4444"}} onClick={()=>setConfirm(t.id)} title="Cestino">🗑️</button></div></td>
+            <td style={S.td}><div style={{display:"flex",gap:4}}><button style={S.iconBtn} onClick={()=>setEditT(t)}>✏️</button><button style={{...S.iconBtn,color:"#ef4444"}} onClick={()=>setConfirm(t.id)}>🗑️</button></div></td>
           </tr>);
         })}</tbody>
       </table></div>
@@ -1205,8 +937,7 @@ function AdminPage({teachers,students,lessons,classLessons,onAddTeacher,onDelete
       </table></div>
     </div>
     {(tm||editT)&&<TeacherModal teacher={editT} onSave={t=>{editT?onUpdateTeacher(t):onAddTeacher(t);setTM(false);setEditT(null);}} onClose={()=>{setTM(false);setEditT(null);}}/>}
-    {confirm&&<ConfirmModal title="Cestino insegnante" text="L'insegnante sarà spostato nel cestino. Potrai recuperarlo o eliminarlo definitivamente." onConfirm={()=>{onDeleteTeacher(confirm);setConfirm(null);}} onClose={()=>setConfirm(null)}/>}
-    {confirmArchive&&<ConfirmModal title="Archivia insegnante" text="L'insegnante sarà archiviato e non potrà più accedere al sistema." onConfirm={()=>{onArchiveTeacher(confirmArchive);setConfirmArchive(null);}} onClose={()=>setConfirmArchive(null)}/>}
+    {confirm&&<ConfirmModal title="Rimuovi insegnante" text="I dati resteranno." onConfirm={()=>{onDeleteTeacher(confirm);setConfirm(null);}} onClose={()=>setConfirm(null)}/>}
     {rm&&<ReassignModal student={rm} teachers={teachers.filter(t=>t.role==="teacher")} onReassign={(tid)=>{onReassignStudent(rm.id,tid);setRM(null);}} onClose={()=>setRM(null)}/>}
   </div>);
 }
