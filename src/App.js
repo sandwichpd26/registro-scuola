@@ -26,14 +26,15 @@ const fmtDate  = d => { if(!d)return""; const [y,m,dd]=d.split("-"); return `${d
 const LEVELS   = Array.from({length:50},(_,i)=>i+1);
 const DURATIONS= [30,45,60,90,120];
 const THEMES = {
-  indigo:  {name:"Indigo",     primary:"#6366f1", sidebar:"#1e1b4b"},
-  violet:  {name:"Viola",      primary:"#7c3aed", sidebar:"#2e1065"},
-  blue:    {name:"Blu",        primary:"#2563eb", sidebar:"#1e3a5f"},
-  teal:    {name:"Verde acqua",primary:"#0d9488", sidebar:"#0f3836"},
-  green:   {name:"Verde",      primary:"#16a34a", sidebar:"#14532d"},
-  rose:    {name:"Rosa",       primary:"#e11d48", sidebar:"#4c0519"},
-  orange:  {name:"Arancione",  primary:"#ea580c", sidebar:"#431407"},
-  slate:   {name:"Grigio",     primary:"#475569", sidebar:"#0f172a"},
+  indigo:  {name:"Indigo",     primary:"#6366f1", sidebar:"#312e81"},
+  violet:  {name:"Viola",      primary:"#7c3aed", sidebar:"#4c1d95"},
+  blue:    {name:"Blu",        primary:"#2563eb", sidebar:"#1e3a8a"},
+  teal:    {name:"Verde acqua",primary:"#0d9488", sidebar:"#115e59"},
+  green:   {name:"Verde",      primary:"#16a34a", sidebar:"#166534"},
+  pink:    {name:"Rosa",       primary:"#ec4899", sidebar:"#831843"},
+  rosso:   {name:"Rosso",      primary:"#e11d48", sidebar:"#881337"},
+  orange:  {name:"Arancione",  primary:"#ea580c", sidebar:"#7c2d12"},
+  slate:   {name:"Grigio",     primary:"#475569", sidebar:"#1e293b"},
 };
 const T_COLORS = ["#6366f1","#8b5cf6","#a855f7","#d946ef","#ec4899","#ef4444","#e11d48","#f97316","#f59e0b","#eab308","#84cc16","#22c55e","#10b981","#14b8a6","#06b6d4","#0ea5e9","#3b82f6","#0284c7","#0891b2","#059669","#15803d","#65a30d","#ca8a04","#dc2626","#7c3aed","#b45309","#78716c","#64748b","#475569","#1e293b"];
 
@@ -384,7 +385,7 @@ function LoginScreen({teachers,onLogin}) {
   };
   return (<div style={S.loginBg}><div style={S.loginCard}>
     <div style={S.loginLogo}>🎓</div>
-    <h1 style={S.loginTitle}>English School</h1>
+    <h1 style={S.loginTitle}>Sandwich Institute</h1>
     <p style={S.loginSub}>Registro Elettronico</p>
     <div style={S.field}><label style={S.label}>Email</label>
       <input style={S.input} type="email" value={email} onChange={e=>{setEmail(e.target.value);setErr("");}} onKeyDown={e=>e.key==="Enter"&&go()} autoFocus/>
@@ -403,7 +404,7 @@ function LoginScreen({teachers,onLogin}) {
 function Sidebar({user,page,setPage,isAdmin,onLogout,onProfile,archivedCount,trashedCount,alertCount,theme,themeKey,onChangeTheme}) {
   const items=[{id:"home",icon:"🏠",label:"Dashboard"},{id:"students",icon:"👤",label:"Studenti & Classi"},{id:"lessons",icon:"📚",label:"Lezioni Individuali"},{id:"classes",icon:"👥",label:"Lezioni di Classe"},{id:"calendar",icon:"📅",label:"Calendario"},{id:"reports",icon:"📊",label:"Report",badge:alertCount>0?`⚠️ ${alertCount}`:null,warn:true},{id:"report_s",icon:"📋",label:"Report Studenti"},...(isAdmin?[{id:"archive",icon:"🗄️",label:"Archivio",badge:archivedCount>0?archivedCount:null},{id:"trash",icon:"🗑️",label:"Cestino",badge:trashedCount>0?trashedCount:null},{id:"admin",icon:"⚙️",label:"Amministrazione"}]:[])];
   return (<aside style={S.sidebar}>
-    <div style={S.sidebarTop}><div style={S.sidebarLogo}>🎓</div><div><div style={S.sidebarBrand}>English School</div><div style={{color:"#475569",fontSize:10}}>Registro</div></div></div>
+    <div style={S.sidebarTop}><div style={S.sidebarLogo}>🎓</div><div><div style={S.sidebarBrand}>Sandwich Institute</div><div style={{color:"#475569",fontSize:10}}>Registro</div></div></div>
     <nav style={{...S.nav,background:theme?.sidebar||"#0f172a"}}>{items.map(item=>(<button key={item.id} className="nav-item" style={{...S.navItem,...(page===item.id?{...S.navItemActive,background:theme?.primary||"#6366f1"}:{})}} onClick={()=>setPage(item.id)}><span style={S.navIcon}>{item.icon}</span><span style={{flex:1}}>{item.label}</span>{item.badge&&<span style={{...S.badge,...(item.warn?{background:"#ef444420",color:"#ef4444"}:{})}}>{item.badge}</span>}</button>))}</nav>
     <div style={S.sidebarBottom}><div style={{...S.userChip,cursor:"pointer"}} onClick={onProfile}><div style={S.avatar}>{user.name[0]}</div><div><div style={S.userName}>{user.name}</div><div style={S.userRole}>{user.role==="admin"?"Amministratore":"Insegnante"}</div></div></div><button style={{...S.logoutBtn,marginBottom:4}} onClick={onProfile}>👤 Profilo</button><button style={S.logoutBtn} onClick={onLogout}>Esci →</button></div>
   </aside>);
@@ -462,7 +463,7 @@ function HomePage({user,students,lessons,classLessons,classes,teachers,setPage,i
     </div>
     <div style={S.section}><h2 style={S.sectionTitle}>Ultime lezioni</h2>
       <div style={S.tableWrap}><table style={S.table}><thead><tr><th style={S.th}>N°</th><th style={S.th}>Data</th><th style={S.th}>Ora</th><th style={S.th}>Studente</th><th style={S.th}>Argomento</th><th style={S.th}>Modalità</th><th style={S.th}>Presenza</th></tr></thead>
-        <tbody>{[...myL].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,5).map(l=>{const st=students.find(s=>s.id===l.student_id);const idx=lessons.filter(x=>x.student_id===l.student_id).sort((a,b)=>a.date.localeCompare(b.date)).findIndex(x=>x.id===l.id)+1;return(<tr key={l.id} style={S.tr}><td style={S.td}><LessonCounter current={idx} total={st?.package_total||0}/></td><td style={S.td}>{fmtDate(l.date)}</td><td style={S.td}><span style={S.timeBadge}>{l.time}</span></td><td style={S.td}><strong>{st?.name||"—"}</strong></td><td style={{...S.td,maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.topic}</td><td style={S.td}><ModeBadge mode={l.mode}/></td><td style={S.td}><Pill ok={l.present}/></td></tr>);})}</tbody>
+        <tbody>{[...myL].sort((a,b)=>a.date.localeCompare(b.date)).slice(0,5).map(l=>{const st=students.find(s=>s.id===l.student_id);const idx=lessons.filter(x=>x.student_id===l.student_id).sort((a,b)=>a.date.localeCompare(b.date)).findIndex(x=>x.id===l.id)+1;return(<tr key={l.id} style={S.tr}><td style={S.td}><LessonCounter current={idx} total={st?.package_total||0}/></td><td style={S.td}>{fmtDate(l.date)}</td><td style={S.td}><span style={S.timeBadge}>{l.time}</span></td><td style={S.td}><strong>{st?.name||"—"}</strong></td><td style={{...S.td,maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.topic}</td><td style={S.td}><ModeBadge mode={l.mode}/></td><td style={S.td}><Pill ok={l.present}/></td></tr>);})}</tbody>
       </table></div>
     </div>
     {dashDetail&&<StudentDetailModal student={dashDetail} lessons={lessons.filter(l=>l.student_id===dashDetail.id)} onClose={()=>setDashDetail(null)}/>}
@@ -526,7 +527,7 @@ function StudentModal({user,teachers,student,onSave,onClose}) {
 }
 
 function StudentDetailModal({student,lessons,onClose}) {
-  const sorted=[...lessons].sort((a,b)=>b.date.localeCompare(a.date));
+  const sorted=[...lessons].sort((a,b)=>a.date.localeCompare(b.date));
   return (<Overlay onClose={onClose} wide>
     <h2 style={S.modalTitle}>Scheda: {student.name}</h2>
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>{[["Livello",`Livello ${student.level}`],["Telefono",student.phone||"—"],["Email",student.email||"—"],["Azienda",student.company||"—"],["Note",student.notes||"—"]].map(([k,v])=>(<div key={k} style={{background:"#f9fafb",borderRadius:8,padding:"10px 14px"}}><div style={{fontSize:11,color:"#9ca3af",marginBottom:2}}>{k}</div><div style={{fontSize:13,fontWeight:600,wordBreak:"break-all"}}>{v}</div></div>))}</div>
@@ -564,12 +565,12 @@ function LessonsPage({user,students,lessons,teachers,isAdmin,onAdd,onAddRecurrin
   const [modal,setModal]=useState(null);const [fS,setFS]=useState("");const [fM,setFM]=useState("");const [fY,setFY]=useState("");const [fD,setFD]=useState("");const [fT,setFT]=useState("");const [confirm,setConfirm]=useState(null);const [detailSt,setDetailSt]=useState(null);const [viewMode,setViewMode]=useState("day");
   const myL=isAdmin?lessons:lessons.filter(l=>l.teacher_id===user.id);
   const filtered=myL.filter(l=>(!fS||l.student_id===fS)&&(!fT||l.teacher_id===fT)&&(!fY||l.date.startsWith(fY))&&(!fM||l.date.slice(0,7)===fM)&&(!fD||l.date===fD));
-  const sorted=[...filtered].sort((a,b)=>b.date.localeCompare(a.date)||(b.time||"").localeCompare(a.time||""));
+  const sorted=[...filtered].sort((a,b)=>a.date.localeCompare(b.date)||(a.time||"").localeCompare(b.time||""));
   const years=[...new Set(myL.map(l=>l.date.slice(0,4)))].sort().reverse();
   const months=[...new Set(myL.map(l=>l.date.slice(0,7)))].sort().reverse();
   const lIdx=l=>{const all=lessons.filter(x=>x.student_id===l.student_id).sort((a,b)=>a.date.localeCompare(b.date));return all.findIndex(x=>x.id===l.id)+1;};
   // Raggruppa per giorno
-  const byDay=useMemo(()=>{const map={};sorted.forEach(l=>{if(!map[l.date])map[l.date]=[];map[l.date].push(l);});return Object.entries(map).sort((a,b)=>b[0].localeCompare(a[0]));},[ sorted ]);
+  const byDay=useMemo(()=>{const map={};sorted.forEach(l=>{if(!map[l.date])map[l.date]=[];map[l.date].push(l);});return Object.entries(map).sort((a,b)=>a[0].localeCompare(b[0]));},[ sorted ]);
   return (<div style={S.page}>
     <div style={S.pageHeader}><div><h1 style={S.pageTitle}>Lezioni Individuali</h1><p style={S.pageSub}>{myL.length} lezioni registrate</p></div>
       <div style={{display:"flex",gap:8,alignItems:"center"}}>
