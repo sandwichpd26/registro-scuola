@@ -50,6 +50,7 @@ const db = {
 
   async getStudents()  { const {data,error}=await supabase.from("students").select("*").order("name"); if(error)throw error; return data||[]; },
   async upsertStudent(s) { const {data,error}=await supabase.from("students").upsert(s).select().single(); if(error)throw error; return data; },
+  async updateStudentField(id,fields) { const {error}=await supabase.from("students").update(fields).eq("id",id); if(error)throw error; },
 
   async getLessons()   { const {data,error}=await supabase.from("lessons").select("*").order("date",{ascending:false}); if(error)throw error; return data||[]; },
   async upsertLesson(l){ const {data,error}=await supabase.from("lessons").upsert(l).select().single(); if(error)throw error; return data; },
@@ -173,22 +174,22 @@ export default function App() {
   };
   const archiveStudent = async id => {
     setStudents(p=>p.map(x=>x.id===id?{...x,active:false}:x));
-    try { await db.upsertStudent({id,active:false}); showToast("Studente archiviato"); }
+    try { await db.updateStudentField(id,{active:false}); showToast("Studente archiviato"); }
     catch(e) { showToast("Errore","err"); }
   };
   const restoreStudent = async (id,tid) => {
     setStudents(p=>p.map(x=>x.id===id?{...x,active:true,teacher_id:tid}:x));
-    try { await db.upsertStudent({id,active:true,teacher_id:tid}); showToast("Studente ripristinato"); }
+    try { await db.updateStudentField(id,{active:true,teacher_id:tid}); showToast("Studente ripristinato"); }
     catch(e) { showToast("Errore","err"); }
   };
   const trashStudent = async id => {
     setStudents(p=>p.map(x=>x.id===id?{...x,deleted:true}:x));
-    try { await db.upsertStudent({id,deleted:true}); showToast("Studente spostato nel cestino"); }
+    try { await db.updateStudentField(id,{deleted:true,active:false}); showToast("Studente spostato nel cestino"); }
     catch(e) { showToast("Errore","err"); }
   };
   const restoreFromTrash = async (id) => {
     setStudents(p=>p.map(x=>x.id===id?{...x,deleted:false,active:true}:x));
-    try { await db.upsertStudent({id,deleted:false,active:true}); showToast("Studente ripristinato"); }
+    try { await db.updateStudentField(id,{deleted:false,active:true}); showToast("Studente ripristinato"); }
     catch(e) { showToast("Errore","err"); }
   };
   const deleteForever = async id => {
@@ -199,14 +200,14 @@ export default function App() {
   };
   const reassignStudent = async (id,tid) => {
     setStudents(p=>p.map(x=>x.id===id?{...x,teacher_id:tid}:x));
-    try { await db.upsertStudent({id,teacher_id:tid}); showToast("Studente riassegnato"); }
+    try { await db.updateStudentField(id,{teacher_id:tid}); showToast("Studente riassegnato"); }
     catch(e) { showToast("Errore","err"); }
   };
   const bump = async (sid,d) => {
     setStudents(p=>p.map(x=>{if(x.id!==sid)return x; return {...x,package_used:Math.max(0,(x.package_used||0)+d)};}));
     const s=students.find(x=>x.id===sid); if(!s)return;
     const newUsed=Math.max(0,(s.package_used||0)+d);
-    try { await db.upsertStudent({id:sid,package_used:newUsed}); }
+    try { await db.updateStudentField(sid,{package_used:newUsed}); }
     catch(e) { showToast("Errore aggiornamento pacchetto","err"); }
   };
 
@@ -1221,9 +1222,21 @@ function ColorPicker({color,onChange}) {
 // ── AMMINISTRAZIONE — identica all'originale ──────────────────────
 function AdminPage({teachers,students,lessons,classLessons,onAddTeacher,onDeleteTeacher,onUpdateTeacher,onReassignStudent}) {
   const [tm,setTM]=useState(false);const [confirm,setConfirm]=useState(null);const [rm,setRM]=useState(null);const [editT,setEditT]=useState(null);const [reassignSearch,setReassignSearch]=useState("");const [reassignView,setReassignView]=useState("name");
+  const exportCSV=()=>{
+    const rows=[["Nome","Email","Telefono","Livello","Insegnante","Pacchetto Tot","Pacchetto Usato","Rimaste","Attivo","Azienda","Note"]];
+    students.forEach(s=>{
+      const t=teachers.find(x=>x.id===s.teacher_id);
+      rows.push([s.name,s.email||"",s.phone||"",s.level,t?.name||"",s.package_total||0,s.package_used||0,pkgRemaining(s),s.active?"Si":"No",s.company||"",s.notes||""]);
+    });
+    const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'\"')}"` ).join(",")).join("\n");
+    const blob=new Blob([csv],{type:"text/csv;charset=utf-8;"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");a.href=url;a.download=`studenti_${today()}.csv`;a.click();
+    URL.revokeObjectURL(url);
+  };
   const active=students.filter(s=>s.active);
   return (<div style={S.page}>
-    <div style={S.pageHeader}><div><h1 style={S.pageTitle}>Amministrazione</h1><p style={S.pageSub}>Gestione insegnanti e riassegnazioni</p></div><button style={{...S.btnPrimary,width:"auto"}} onClick={()=>setTM(true)}>+ Nuovo Insegnante</button></div>
+    <div style={S.pageHeader}><div><h1 style={S.pageTitle}>Amministrazione</h1><p style={S.pageSub}>Gestione insegnanti e riassegnazioni</p></div><div style={{display:"flex",gap:8}}><button style={{...S.btnSecondary,width:"auto"}} onClick={exportCSV}>⬇️ Backup CSV</button><button style={{...S.btnPrimary,width:"auto"}} onClick={()=>setTM(true)}>+ Nuovo Insegnante</button></div></div>
     <div style={S.section}><h2 style={S.sectionTitle}>Insegnanti</h2>
       <div style={{...S.tableWrap,overflow:"visible"}}><table style={S.table}><thead><tr><th style={S.th}>Nome</th><th style={S.th}>Email</th><th style={S.th}>Telefono</th><th style={S.th}>Colore</th><th style={S.th}>Studenti</th><th style={S.th}>Lezioni</th><th style={S.th}></th></tr></thead>
         <tbody>{teachers.filter(t=>t.role==="teacher").map(t=>{
