@@ -219,6 +219,12 @@ export default function App() {
     try { await db.upsertLesson(obj); showToast("Lezione registrata ✓"); }
     catch(e) { setLessons(p=>p.filter(x=>x.id!==obj.id)); showToast("Errore salvataggio","err"); }
   };
+  const addLessonAsAdmin = async l => {
+    const obj={...l,id:uid()};
+    setLessons(p=>[obj,...p]); bump(l.student_id,1);
+    try { await db.upsertLesson(obj); }
+    catch(e) { setLessons(p=>p.filter(x=>x.id!==obj.id)); throw e; }
+  };
   const updateLesson = async l => {
     setLessons(p=>p.map(x=>x.id===l.id?l:x));
     try { await db.upsertLesson(l); showToast("Lezione aggiornata"); }
@@ -302,7 +308,7 @@ export default function App() {
     students: <StudentsPage user={currentUser} students={allActiveStudents} classes={myClasses} teachers={teachers} lessons={lessons} classLessons={classLessons} isAdmin={isAdmin} onAdd={addStudent} onUpdate={updateStudent} onArchive={archiveStudent} onTrash={trashStudent}/>,
     lessons:  <LessonsPage  user={currentUser} students={activeStudents} lessons={lessons} teachers={teachers} isAdmin={isAdmin} onAdd={addLesson} onAddRecurring={addRecurringLessons} onUpdate={updateLesson} onDelete={deleteLesson}/>,
     classes:  <ClassesPage  user={currentUser} students={allActiveStudents} classes={myClasses} classLessons={myClassLessons} teachers={teachers} isAdmin={isAdmin} onAddClass={addClass} onUpdateClass={updateClass} onDeleteClass={deleteClass} onAddClassLesson={addClassLesson} onUpdateClassLesson={updateClassLesson} onDeleteClassLesson={deleteClassLesson}/>,
-    calendar: <CalendarPage user={currentUser} students={myStudents} lessons={lessons} classLessons={classLessons} classes={myClasses} teachers={teachers} isAdmin={isAdmin} notes={myNotes} onAddNote={addNote} onUpdateNote={updateNote} onDeleteNote={deleteNote}/>,
+    calendar: <CalendarPage user={currentUser} students={myStudents} lessons={lessons} classLessons={classLessons} classes={myClasses} teachers={teachers} isAdmin={isAdmin} notes={myNotes} onAddNote={addNote} onUpdateNote={updateNote} onDeleteNote={deleteNote} onImportLesson={addLessonAsAdmin} allStudents={students} allTeachers={teachers}/>,
     reports:  <ReportsPage  user={currentUser} students={isAdmin?students:activeStudents} classes={myClasses} lessons={lessons} classLessons={classLessons} teachers={teachers} isAdmin={isAdmin}/>,
     report_s: <StudentReportPage user={currentUser} students={myStudents.filter(s=>s.active&&!s.deleted)} lessons={lessons} isAdmin={isAdmin}/>,
     archive:  isAdmin?<ArchivePage students={archivedStudents} teachers={teachers} lessons={lessons} onRestore={restoreStudent} onTrash={trashStudent}/>:null,
@@ -405,14 +411,15 @@ function Sidebar({user,page,setPage,isAdmin,onLogout,onProfile,archivedCount,tra
 
 // ── HOME PAGE — identica all'originale ───────────────────────────
 function HomePage({user,students,lessons,classLessons,classes,teachers,setPage,isAdmin}) {
-  const [dashFilter,setDashFilter]=useState("today");
+  const [dashFilter,setDashFilter]=useState("today");const [dashDetail,setDashDetail]=useState(null);
   const active=students.filter(s=>s.active);
   const myL=isAdmin?lessons:lessons.filter(l=>l.teacher_id===user.id);
   const todayStr=today();
-  const weekStart=useMemo(()=>{const d=new Date();d.setHours(0,0,0,0);const day=d.getDay();d.setDate(d.getDate()-day+(day===0?-6:1));return d.toISOString().split("T")[0];},[]);
+  const weekStart=useMemo(()=>{const d=new Date();d.setHours(0,0,0,0);const day=d.getDay();d.setDate(d.getDate()-(day===0?6:day-1));return d.toISOString().split("T")[0];},[]);
+  const weekEnd=useMemo(()=>{const d=new Date();d.setHours(0,0,0,0);const day=d.getDay();d.setDate(d.getDate()+(day===0?0:7-day));return d.toISOString().split("T")[0];},[]);
   const filteredStudents=useMemo(()=>{
     if(!isAdmin||dashFilter==="all")return active;
-    const relL=dashFilter==="today"?[...lessons.filter(l=>l.date===todayStr),...classLessons.filter(l=>l.date===todayStr)]:[...lessons.filter(l=>l.date>=weekStart&&l.date<=todayStr),...classLessons.filter(l=>l.date>=weekStart&&l.date<=todayStr)];
+    const relL=dashFilter==="today"?[...lessons.filter(l=>l.date===todayStr),...classLessons.filter(l=>l.date===todayStr)]:[...lessons.filter(l=>l.date>=weekStart&&l.date<=weekEnd),...classLessons.filter(l=>l.date>=weekStart&&l.date<=weekEnd)];
     const sids=new Set();relL.forEach(l=>{if(l.student_id)sids.add(l.student_id);if(l.attendances)Object.keys(l.attendances).forEach(id=>sids.add(id));});
     return active.filter(s=>sids.has(s.id));
   },[dashFilter,active,lessons,classLessons,todayStr,weekStart,isAdmin]);
@@ -420,11 +427,11 @@ function HomePage({user,students,lessons,classLessons,classes,teachers,setPage,i
   const todayClass=(isAdmin?classLessons:classLessons.filter(l=>l.teacher_id===user.id)).filter(l=>l.date===todayStr).sort((a,b)=>(a.time||"").localeCompare(b.time||""));
   const lowS=active.filter(s=>pkgRemaining(s)<=3&&s.package_total>0);
   const lowC=classes.filter(c=>pkgRemaining(c)<=3&&c.package_total>0);
-  const thisWeek=myL.filter(l=>{const d=(new Date()-new Date(l.date))/86400000;return d>=0&&d<=7;});
+  const thisWeek=myL.filter(l=>l.date>=weekStart&&l.date<=weekEnd);
   return (<div style={S.page}>
     <h1 style={S.pageTitle}>Ciao, {user.name.split(" ")[0]}! 👋</h1>
     <p style={S.pageSub}>{new Date().toLocaleDateString("it-IT",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</p>
-    <div style={S.statsGrid}>{[{label:"Studenti Attivi",value:active.length,icon:"👤",color:"#10b981",action:()=>setPage("students")},{label:"Lezioni (7 giorni)",value:thisWeek.length,icon:"📚",color:"#6366f1",action:()=>setPage("lessons")},{label:"Classi",value:classes.length,icon:"👥",color:"#f59e0b",action:()=>setPage("classes")},{label:"Pacchetti in scadenza",value:lowS.length+lowC.length,icon:"⚠️",color:"#ef4444",action:()=>setPage("reports")}].map((s,i)=>(
+    <div style={S.statsGrid}>{[{label:"Studenti Attivi",value:active.length,icon:"👤",color:"#10b981",action:()=>setPage("students")},{label:"Lezioni (sett.)",value:thisWeek.length,icon:"📚",color:"#6366f1",action:()=>setPage("lessons")},{label:"Classi",value:classes.length,icon:"👥",color:"#f59e0b",action:()=>setPage("classes")},{label:"Pacchetti in scadenza",value:lowS.length+lowC.length,icon:"⚠️",color:"#ef4444",action:()=>setPage("reports")}].map((s,i)=>(
       <div key={i} style={{...S.statCard,cursor:"pointer"}} onClick={s.action}><div style={{...S.statIcon,background:s.color+"20",color:s.color}}>{s.icon}</div><div style={S.statValue}>{s.value}</div><div style={S.statLabel}>{s.label}</div></div>
     ))}</div>
     {isAdmin&&(<div style={{...S.card,marginBottom:24}}>
@@ -434,7 +441,7 @@ function HomePage({user,students,lessons,classLessons,classes,teachers,setPage,i
         <span style={{fontSize:12,color:"#9ca3af",marginLeft:"auto"}}>{filteredStudents.length} studenti</span>
       </div>
       {filteredStudents.length===0?<div style={S.emptySmall}>Nessuno studente per il filtro selezionato</div>:
-        <div style={{display:"flex",flexWrap:"wrap",gap:8}}>{filteredStudents.map(s=>{const t=teachers.find(x=>x.id===s.teacher_id);return(<div key={s.id} style={{background:"#f8fafc",borderRadius:12,padding:"10px 14px",border:"1px solid #f1f5f9",display:"flex",alignItems:"center",gap:10}}><div style={{...S.studentAvatar,width:32,height:32,fontSize:12}}>{s.name.split(" ").map(n=>n[0]).join("").slice(0,2)}</div><div><div style={{fontWeight:600,fontSize:13}}>{s.name}</div><div style={{fontSize:11,color:"#9ca3af"}}>{t?.name||"—"}</div></div><PkgBar used={s.package_used} total={s.package_total}/></div>);})}</div>
+        <div style={{display:"flex",flexWrap:"wrap",gap:8}}>{filteredStudents.map(s=>{const t=teachers.find(x=>x.id===s.teacher_id);return(<div key={s.id} style={{background:"#f8fafc",borderRadius:12,padding:"10px 14px",border:"1px solid #f1f5f9",display:"flex",alignItems:"center",gap:10}}><div style={{...S.studentAvatar,width:32,height:32,fontSize:12}}>{s.name.split(" ").map(n=>n[0]).join("").slice(0,2)}</div><div style={{flex:1}}><div style={{fontWeight:600,fontSize:13}}>{s.name}</div><div style={{fontSize:11,color:"#9ca3af"}}>{t?.name||"—"}</div></div><PkgBar used={s.package_used} total={s.package_total}/><button style={{...S.btnSm,marginLeft:4,padding:"3px 10px",fontSize:11}} onClick={()=>setDashDetail(s)}>Dettagli</button></div>);})}</div>
       }
     </div>)}
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:24,marginBottom:32}}>
@@ -458,6 +465,7 @@ function HomePage({user,students,lessons,classLessons,classes,teachers,setPage,i
         <tbody>{[...myL].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,5).map(l=>{const st=students.find(s=>s.id===l.student_id);const idx=lessons.filter(x=>x.student_id===l.student_id).sort((a,b)=>a.date.localeCompare(b.date)).findIndex(x=>x.id===l.id)+1;return(<tr key={l.id} style={S.tr}><td style={S.td}><LessonCounter current={idx} total={st?.package_total||0}/></td><td style={S.td}>{fmtDate(l.date)}</td><td style={S.td}><span style={S.timeBadge}>{l.time}</span></td><td style={S.td}><strong>{st?.name||"—"}</strong></td><td style={{...S.td,maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.topic}</td><td style={S.td}><ModeBadge mode={l.mode}/></td><td style={S.td}><Pill ok={l.present}/></td></tr>);})}</tbody>
       </table></div>
     </div>
+    {dashDetail&&<StudentDetailModal student={dashDetail} lessons={lessons.filter(l=>l.student_id===dashDetail.id)} onClose={()=>setDashDetail(null)}/>}
   </div>);
 }
 
@@ -553,15 +561,22 @@ function ModeFields({form,set}) {
 
 // ── LEZIONI INDIVIDUALI — identica all'originale ──────────────────
 function LessonsPage({user,students,lessons,teachers,isAdmin,onAdd,onAddRecurring,onUpdate,onDelete}) {
-  const [modal,setModal]=useState(null);const [fS,setFS]=useState("");const [fM,setFM]=useState("");const [fY,setFY]=useState("");const [fD,setFD]=useState("");const [fT,setFT]=useState("");const [confirm,setConfirm]=useState(null);
+  const [modal,setModal]=useState(null);const [fS,setFS]=useState("");const [fM,setFM]=useState("");const [fY,setFY]=useState("");const [fD,setFD]=useState("");const [fT,setFT]=useState("");const [confirm,setConfirm]=useState(null);const [detailSt,setDetailSt]=useState(null);const [viewMode,setViewMode]=useState("day");
   const myL=isAdmin?lessons:lessons.filter(l=>l.teacher_id===user.id);
   const filtered=myL.filter(l=>(!fS||l.student_id===fS)&&(!fT||l.teacher_id===fT)&&(!fY||l.date.startsWith(fY))&&(!fM||l.date.slice(0,7)===fM)&&(!fD||l.date===fD));
   const sorted=[...filtered].sort((a,b)=>b.date.localeCompare(a.date)||(b.time||"").localeCompare(a.time||""));
   const years=[...new Set(myL.map(l=>l.date.slice(0,4)))].sort().reverse();
   const months=[...new Set(myL.map(l=>l.date.slice(0,7)))].sort().reverse();
   const lIdx=l=>{const all=lessons.filter(x=>x.student_id===l.student_id).sort((a,b)=>a.date.localeCompare(b.date));return all.findIndex(x=>x.id===l.id)+1;};
+  // Raggruppa per giorno
+  const byDay=useMemo(()=>{const map={};sorted.forEach(l=>{if(!map[l.date])map[l.date]=[];map[l.date].push(l);});return Object.entries(map).sort((a,b)=>b[0].localeCompare(a[0]));},[ sorted ]);
   return (<div style={S.page}>
-    <div style={S.pageHeader}><div><h1 style={S.pageTitle}>Lezioni Individuali</h1><p style={S.pageSub}>{myL.length} lezioni registrate</p></div><button style={{...S.btnPrimary,width:"auto"}} onClick={()=>setModal("add")}>+ Nuova Lezione</button></div>
+    <div style={S.pageHeader}><div><h1 style={S.pageTitle}>Lezioni Individuali</h1><p style={S.pageSub}>{myL.length} lezioni registrate</p></div>
+      <div style={{display:"flex",gap:8,alignItems:"center"}}>
+        <div style={{display:"flex",gap:4,background:"#f1f5f9",borderRadius:8,padding:3}}>{[["day","Per giorno"],["table","Tabella"]].map(([v,l])=><button key={v} onClick={()=>setViewMode(v)} style={{padding:"5px 12px",borderRadius:6,border:"none",cursor:"pointer",fontWeight:600,fontSize:12,background:viewMode===v?"white":"transparent",color:viewMode===v?"#374151":"#9ca3af",boxShadow:viewMode===v?"0 1px 3px rgba(0,0,0,0.1)":"none"}}>{l}</button>)}</div>
+        <button style={{...S.btnPrimary,width:"auto"}} onClick={()=>setModal("add")}>+ Nuova Lezione</button>
+      </div>
+    </div>
     <div style={{display:"flex",gap:10,marginBottom:20,flexWrap:"wrap",alignItems:"center"}}>
       <select style={{...S.input,width:"auto",minWidth:170}} value={fS} onChange={e=>setFS(e.target.value)}><option value="">Tutti gli studenti</option>{students.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>
       {isAdmin&&<select style={{...S.input,width:"auto",minWidth:160}} value={fT} onChange={e=>setFT(e.target.value)}><option value="">Tutti gli insegnanti</option>{teachers.filter(t=>t.role==="teacher").map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select>}
@@ -570,10 +585,44 @@ function LessonsPage({user,students,lessons,teachers,isAdmin,onAdd,onAddRecurrin
       <div style={{display:"flex",alignItems:"center",gap:6}}><label style={{fontSize:13,color:"#6b7280"}}>Giorno:</label><input type="date" style={{...S.input,width:"auto"}} value={fD} onChange={e=>setFD(e.target.value)}/></div>
       {(fS||fT||fY||fM||fD)&&<button style={{...S.btnSecondary,padding:"8px 14px",fontSize:12}} onClick={()=>{setFS("");setFT("");setFY("");setFM("");setFD("");}}>✕ Rimuovi filtri</button>}
     </div>
-    {sorted.length===0?<Empty text="Nessuna lezione trovata"/>:(<div style={S.tableWrap}><table style={S.table}>
-      <thead><tr><th style={S.th}>N°</th><th style={S.th}>Data</th><th style={S.th}>Ora</th><th style={S.th}>Min</th><th style={S.th}>Studente</th><th style={S.th}>Argomento</th><th style={S.th}>Compiti</th><th style={S.th}>Modalità</th><th style={S.th}>Presenza</th><th style={S.th}></th></tr></thead>
-      <tbody>{sorted.map(l=>{const st=students.find(s=>s.id===l.student_id);if(!st)return null;return(<tr key={l.id} style={S.tr}><td style={S.td}><LessonCounter current={lIdx(l)} total={st.package_total||0}/></td><td style={S.td}>{fmtDate(l.date)}</td><td style={S.td}><span style={S.timeBadge}>{l.time||"—"}</span></td><td style={S.td}><span style={{fontSize:12,color:"#6b7280"}}>{l.duration}m</span></td><td style={S.td}><strong>{st.name}</strong></td><td style={{...S.td,maxWidth:150,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.topic}</td><td style={{...S.td,maxWidth:120,color:"#6b7280",fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.homework||"—"}</td><td style={S.td}><ModeBadge mode={l.mode} zoom={l.zoom_account}/></td><td style={S.td}><Pill ok={l.present}/></td><td style={S.td}><div style={{display:"flex",gap:4}}><button style={S.iconBtn} onClick={()=>setModal(l)}>✏️</button><button style={S.iconBtn} onClick={()=>setConfirm({id:l.id,sid:l.student_id})}>🗑️</button></div></td></tr>);})}</tbody>
-    </table></div>)}
+    {sorted.length===0?<Empty text="Nessuna lezione trovata"/>:(
+      viewMode==="day"?(
+        <div style={{display:"flex",flexDirection:"column",gap:16}}>
+          {byDay.map(([date,dayLessons])=>(
+            <div key={date} style={{background:"white",borderRadius:16,border:"1px solid #f1f5f9",overflow:"hidden",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+              <div style={{background:"#f8fafc",padding:"10px 18px",borderBottom:"1px solid #f1f5f9",display:"flex",alignItems:"center",gap:10}}>
+                <span style={{fontWeight:700,fontSize:14,color:"#374151"}}>{new Date(date+"T00:00:00").toLocaleDateString("it-IT",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</span>
+                <span style={{marginLeft:"auto",fontSize:12,color:"#9ca3af",background:"#e0e7ff",color:"#4f46e5",borderRadius:20,padding:"2px 10px",fontWeight:600}}>{dayLessons.length} lezioni</span>
+              </div>
+              <div style={{padding:"8px 0"}}>
+                {[...dayLessons].sort((a,b)=>(a.time||"").localeCompare(b.time||"")).map(l=>{
+                  const st=students.find(s=>s.id===l.student_id);if(!st)return null;
+                  const t=teachers.find(x=>x.id===l.teacher_id);
+                  return(<div key={l.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 18px",borderBottom:"1px solid #f8fafc"}}>
+                    <span style={S.timeBadge}>{l.time||"—"}</span>
+                    <span style={{fontSize:12,color:"#9ca3af",minWidth:32}}>{l.duration}m</span>
+                    <strong style={{fontSize:13,flex:"0 0 auto",minWidth:100}}>{st.name}</strong>
+                    {isAdmin&&<span style={{fontSize:11,color:t?.color||"#6b7280",fontWeight:600,minWidth:80}}>👤 {t?.name||"—"}</span>}
+                    <span style={{fontSize:12,color:"#6b7280",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.topic||"—"}</span>
+                    <ModeBadge mode={l.mode}/>
+                    <Pill ok={l.present}/>
+                    <LessonCounter current={lIdx(l)} total={st.package_total||0}/>
+                    <button style={{...S.btnSm,padding:"3px 10px",fontSize:11}} onClick={()=>setDetailSt({student:st,lesson:l})}>Dettagli</button>
+                    <div style={{display:"flex",gap:4}}><button style={S.iconBtn} onClick={()=>setModal(l)}>✏️</button><button style={S.iconBtn} onClick={()=>setConfirm({id:l.id,sid:l.student_id})}>🗑️</button></div>
+                  </div>);
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      ):(
+        <div style={S.tableWrap}><table style={S.table}>
+          <thead><tr><th style={S.th}>N°</th><th style={S.th}>Data</th><th style={S.th}>Ora</th><th style={S.th}>Min</th><th style={S.th}>Studente</th><th style={S.th}>Argomento</th><th style={S.th}>Compiti</th><th style={S.th}>Modalità</th><th style={S.th}>Presenza</th><th style={S.th}></th></tr></thead>
+          <tbody>{sorted.map(l=>{const st=students.find(s=>s.id===l.student_id);if(!st)return null;return(<tr key={l.id} style={S.tr}><td style={S.td}><LessonCounter current={lIdx(l)} total={st.package_total||0}/></td><td style={S.td}>{fmtDate(l.date)}</td><td style={S.td}><span style={S.timeBadge}>{l.time||"—"}</span></td><td style={S.td}><span style={{fontSize:12,color:"#6b7280"}}>{l.duration}m</span></td><td style={S.td}><strong>{st.name}</strong></td><td style={{...S.td,maxWidth:150,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.topic}</td><td style={{...S.td,maxWidth:120,color:"#6b7280",fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.homework||"—"}</td><td style={S.td}><ModeBadge mode={l.mode} zoom={l.zoom_account}/></td><td style={S.td}><Pill ok={l.present}/></td><td style={S.td}><div style={{display:"flex",gap:4}}><button style={S.iconBtn} onClick={()=>setModal(l)}>✏️</button><button style={S.iconBtn} onClick={()=>setConfirm({id:l.id,sid:l.student_id})}>🗑️</button></div></td></tr>);})}</tbody>
+        </table></div>
+      )
+    )}
+    {detailSt&&<StudentDetailModal student={detailSt.student} lessons={lessons.filter(l=>l.student_id===detailSt.student.id)} onClose={()=>setDetailSt(null)}/>}
     {modal&&<LessonModal user={user} students={students} lesson={modal==="add"?null:modal} onSave={l=>{modal==="add"?onAdd(l):onUpdate(l);setModal(null);}} onSaveRecurring={(l,n)=>{onAddRecurring(l,n);setModal(null);}} onClose={()=>setModal(null)}/>}
     {confirm&&<ConfirmModal title="Elimina lezione" text="Operazione irreversibile." onConfirm={()=>{onDelete(confirm.id,confirm.sid);setConfirm(null);}} onClose={()=>setConfirm(null)}/>}
   </div>);
@@ -702,9 +751,16 @@ function ClassLessonModal({cls,students,lesson,onSave,onClose}) {
 }
 
 // ── CALENDARIO — identico all'originale ───────────────────────────
-function CalendarPage({user,students,lessons,classLessons,classes,teachers,isAdmin,notes,onAddNote,onUpdateNote,onDeleteNote}) {
+function CalendarPage({user,students,lessons,classLessons,classes,teachers,isAdmin,notes,onAddNote,onUpdateNote,onDeleteNote,onImportLesson,allStudents,allTeachers}) {
   const [cur,setCur]=useState(()=>{ const d=new Date(); return new Date(d.getFullYear(),d.getMonth(),1); });
   const [selDay,setSel]=useState(null);const [filterT,setFT]=useState("all");const [noteModal,setNM]=useState(null);
+  const [gcStatus,setGcStatus]=useState("idle");
+  const [gcMessage,setGcMsg]=useState("");
+  const [gcCount,setGcCount]=useState(null);
+
+  const GOOGLE_CLIENT_ID = "389289626389-tehsnne7dqg4mnff2pu8npc8ce26382v.apps.googleusercontent.com";
+  const SCOPES = "https://www.googleapis.com/auth/calendar.readonly";
+
   const year=cur.getFullYear(),month=cur.getMonth();
   const daysInMonth=new Date(year,month+1,0).getDate();
   const startOffset=(new Date(year,month,1).getDay()+6)%7;
@@ -718,16 +774,111 @@ function CalendarPage({user,students,lessons,classLessons,classes,teachers,isAdm
   const teacherList=teachers.filter(t=>t.role==="teacher");
   const tc=tid=>teachers.find(t=>t.id===tid)?.color||"#6366f1";
   const monthNotes=notes.filter(n=>n.date.startsWith(`${year}-${String(month+1).padStart(2,"0")}`));
+
+  const loadGapiScript = () => new Promise((resolve,reject)=>{
+    if(window.gapi){resolve();return;}
+    const s=document.createElement("script");s.src="https://apis.google.com/js/api.js";
+    s.onload=resolve;s.onerror=reject;document.head.appendChild(s);
+  });
+  const loadGisScript = () => new Promise((resolve,reject)=>{
+    if(window.google?.accounts){resolve();return;}
+    const s=document.createElement("script");s.src="https://accounts.google.com/gsi/client";
+    s.onload=resolve;s.onerror=reject;document.head.appendChild(s);
+  });
+  const parseGoogleEvent = (event) => {
+    const start=event.start?.dateTime||event.start?.date;
+    const end=event.end?.dateTime||event.end?.date;
+    if(!start) return null;
+    const startDate=start.split("T")[0];
+    const startTime=start.includes("T")?start.split("T")[1].slice(0,5):"09:00";
+    let duration=60;
+    if(end){const s=new Date(start),e=new Date(end);const mins=Math.round((e-s)/60000);if(mins>=15&&mins<=480)duration=mins;}
+    const title=(event.summary||"").toLowerCase();
+    const mode=title.includes("onl.")||title.includes("online")||title.includes("zoom")?"online":"presenza";
+    return {startDate,startTime,duration,summary:event.summary||"",mode};
+  };
+  const findStudent = (eventSummary) => {
+    const active=(allStudents||students).filter(s=>s.active&&!s.deleted);
+    const titleLower=eventSummary.toLowerCase();
+    return active.find(s=>s.name.toLowerCase().split(" ").filter(p=>p.length>2).some(p=>titleLower.includes(p)));
+  };
+  const syncGoogleCalendar = async () => {
+    setGcStatus("loading");setGcMsg("Caricamento librerie Google...");setGcCount(null);
+    try {
+      await Promise.all([loadGapiScript(),loadGisScript()]);
+      await new Promise((res,rej)=>window.gapi.load("client",{callback:res,onerror:rej}));
+      await window.gapi.client.init({});
+      await window.gapi.client.load("https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest");
+      setGcMsg("Accesso a Google Calendar...");
+      const token = await new Promise((resolve,reject)=>{
+        const client=window.google.accounts.oauth2.initTokenClient({
+          client_id:GOOGLE_CLIENT_ID,scope:SCOPES,
+          callback:(resp)=>{if(resp.error)reject(new Error(resp.error));else resolve(resp.access_token);}
+        });
+        client.requestAccessToken({prompt:""});
+      });
+      window.gapi.client.setToken({access_token:token});
+      setGcMsg("Lettura calendari...");
+      const calListResp=await window.gapi.client.calendar.calendarList.list();
+      const calendars=calListResp.result.items||[];
+      const timeMin=new Date(year,month,1).toISOString();
+      const timeMax=new Date(year,month+4,0).toISOString();
+      setGcMsg("Importazione lezioni...");
+      let imported=0,skipped=0,errors=[];
+      for(const cal of calendars){
+        const calName=cal.summary||"";
+        const matchedTeacher=(allTeachers||teachers).find(t=>t.role==="teacher"&&(
+          calName.toLowerCase().includes(t.name.toLowerCase().split(" ")[0].toLowerCase())||
+          t.name.toLowerCase().includes(calName.toLowerCase().split(" ")[0].toLowerCase())
+        ));
+        if(!matchedTeacher) continue;
+        const eventsResp=await window.gapi.client.calendar.events.list({
+          calendarId:cal.id,timeMin,timeMax,singleEvents:true,orderBy:"startTime",maxResults:500
+        });
+        for(const event of eventsResp.result.items||[]){
+          const parsed=parseGoogleEvent(event);
+          if(!parsed) continue;
+          const student=findStudent(parsed.summary);
+          if(!student){errors.push('"'+parsed.summary+'" ('+matchedTeacher.name+')');skipped++;continue;}
+          const dup=lessons.find(l=>l.student_id===student.id&&l.date===parsed.startDate&&l.time===parsed.startTime);
+          if(dup){skipped++;continue;}
+          try{
+            await onImportLesson({student_id:student.id,teacher_id:matchedTeacher.id,date:parsed.startDate,time:parsed.startTime,duration:parsed.duration,topic:parsed.summary,homework:"",present:true,mode:parsed.mode,zoom_account:""});
+            imported++;
+          }catch(e){skipped++;}
+        }
+      }
+      setGcStatus("done");setGcCount({imported,skipped,errors});
+      setGcMsg(imported>0?("✅ Importate "+imported+" nuove lezioni"):"✅ Nessuna nuova lezione da importare");
+    }catch(e){setGcStatus("error");setGcMsg("Errore: "+(e.message||"problema con Google Calendar"));}
+  };
+
   return (<div style={S.page}>
     <div style={S.pageHeader}>
       <div><h1 style={S.pageTitle}>📅 Calendario</h1><p style={S.pageSub}>{isAdmin?"Vista per insegnante (colori)":`Lezioni di ${user.name}`}</p></div>
-      <div style={{display:"flex",gap:8,alignItems:"center"}}>
+      <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
         {isAdmin&&<select style={{...S.input,width:"auto",minWidth:180}} value={filterT} onChange={e=>setFT(e.target.value)}><option value="all">Tutti gli insegnanti</option>{teacherList.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select>}
+        {isAdmin&&(
+          <button style={{...S.btnPrimary,width:"auto",padding:"8px 16px",background:gcStatus==="error"?"#ef4444":gcStatus==="done"?"#10b981":"#4285f4",opacity:gcStatus==="loading"?0.7:1}} disabled={gcStatus==="loading"} onClick={syncGoogleCalendar}>
+            {gcStatus==="loading"?"⏳ Sincronizzazione...":gcStatus==="done"?"✅ Sincronizzato":"🔄 Sincronizza Google Calendar"}
+          </button>
+        )}
         <button style={{...S.btnPrimary,width:"auto",padding:"8px 16px"}} onClick={()=>setNM("add")}>+ Nota</button>
       </div>
     </div>
+    {gcStatus!=="idle"&&(
+      <div style={{background:gcStatus==="error"?"#fee2e2":gcStatus==="done"?"#f0fdf4":"#eff6ff",border:"1px solid "+(gcStatus==="error"?"#fca5a5":gcStatus==="done"?"#86efac":"#93c5fd"),borderRadius:12,padding:"12px 18px",marginBottom:16,fontSize:13}}>
+        <div style={{fontWeight:600,color:gcStatus==="error"?"#dc2626":gcStatus==="done"?"#166534":"#1d4ed8",marginBottom:gcCount?.errors?.length>0?6:0}}>{gcMessage}</div>
+        {gcCount?.errors?.length>0&&(<div>
+          <div style={{fontSize:12,color:"#92400e",fontWeight:600,marginBottom:4}}>Lezioni non abbinate ({gcCount.errors.length}):</div>
+          {gcCount.errors.slice(0,5).map((e,i)=><div key={i} style={{fontSize:11,color:"#b45309"}}>• {e}</div>)}
+          {gcCount.errors.length>5&&<div style={{fontSize:11,color:"#9ca3af"}}>...e altri {gcCount.errors.length-5}</div>}
+        </div>)}
+        {gcStatus==="done"&&<button style={{...S.btnSecondary,marginTop:8,padding:"4px 12px",fontSize:12}} onClick={()=>{setGcStatus("idle");setGcMsg("");setGcCount(null);}}>Chiudi</button>}
+      </div>
+    )}
     {isAdmin&&(<div style={{display:"flex",gap:10,marginBottom:18,flexWrap:"wrap"}}>
-      {teacherList.map(t=>(<div key={t.id} style={{display:"flex",alignItems:"center",gap:6,background:"white",borderRadius:8,padding:"6px 12px",border:`2px solid ${t.color}30`,fontSize:13}}><span style={{width:10,height:10,borderRadius:"50%",background:t.color,display:"inline-block"}}/><span style={{fontWeight:600,color:t.color}}>{t.name}</span></div>))}
+      {teacherList.map(t=>(<div key={t.id} style={{display:"flex",alignItems:"center",gap:6,background:"white",borderRadius:8,padding:"6px 12px",border:"2px solid "+t.color+"30",fontSize:13}}><span style={{width:10,height:10,borderRadius:"50%",background:t.color,display:"inline-block"}}/><span style={{fontWeight:600,color:t.color}}>{t.name}</span></div>))}
       <div style={{display:"flex",alignItems:"center",gap:6,background:"white",borderRadius:8,padding:"6px 12px",border:"1px solid #f1f5f9",fontSize:13}}><span style={{width:10,height:10,borderRadius:"50%",background:"#94a3b8",display:"inline-block"}}/><span style={{color:"#6b7280"}}>Note personali</span></div>
     </div>)}
     <div style={{display:"grid",gridTemplateColumns:"1fr 360px",gap:24}}>
@@ -735,7 +886,7 @@ function CalendarPage({user,students,lessons,classLessons,classes,teachers,isAdm
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"20px 24px",borderBottom:"1px solid #f1f5f9"}}><button style={S.iconBtn} onClick={()=>setCur(new Date(year,month-1,1))}>◀</button><h2 style={{margin:0,fontSize:18,fontWeight:700}}>{cur.toLocaleDateString("it-IT",{month:"long",year:"numeric"})}</h2><button style={S.iconBtn} onClick={()=>setCur(new Date(year,month+1,1))}>▶</button></div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",padding:"12px 8px 8px"}}>
           {weekDays.map(d=><div key={d} style={{textAlign:"center",fontSize:11,fontWeight:700,color:"#9ca3af",textTransform:"uppercase",paddingBottom:8}}>{d}</div>)}
-          {Array.from({length:startOffset}).map((_,i)=><div key={`e${i}`}/>)}
+          {Array.from({length:startOffset}).map((_,i)=><div key={"e"+i}/>)}
           {Array.from({length:daysInMonth},(_,i)=>i+1).map(day=>{
             const {indiv,cls,dayNotes,ds}=forDay(day);const isToday=ds===todayStr,isSel=selDay===day;
             const tIds=[...new Set([...indiv.map(l=>l.teacher_id),...cls.map(l=>l.teacher_id)])];
@@ -752,7 +903,7 @@ function CalendarPage({user,students,lessons,classLessons,classes,teachers,isAdm
           })}
         </div>
         <div style={{padding:"8px 16px 12px",borderTop:"1px solid #f8fafc",display:"flex",gap:12,flexWrap:"wrap"}}>
-          {isAdmin?teacherList.map(t=><div key={t.id} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:t.color}}><span style={{width:8,height:8,borderRadius:"50%",background:t.color,display:"inline-block"}}/>{t.name}</div>):[["#6366f1","Individuali"],["#f59e0b","Classi"]].map(([c,l])=><div key={l} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:"#6b7280"}}><span style={{width:8,height:8,borderRadius:"50%",background:c,display:"inline-block"}}/>{l}</div>)}
+          {isAdmin?teacherList.map(t=><div key={t.id} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:t.color}}><span style={{width:8,height:8,borderRadius:"50%",background:t.color,display:"inline-block"}}/>{t.name}</div>):[[" #6366f1","Individuali"],["#f59e0b","Classi"]].map(([c,l])=><div key={l} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:"#6b7280"}}><span style={{width:8,height:8,borderRadius:"50%",background:c,display:"inline-block"}}/>{l}</div>)}
           <div style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:"#6b7280"}}><span style={{width:8,height:8,borderRadius:"50%",background:"#94a3b8",display:"inline-block"}}/>Note</div>
         </div>
       </div>
@@ -765,16 +916,15 @@ function CalendarPage({user,students,lessons,classLessons,classes,teachers,isAdm
             <h3 style={{margin:0,fontSize:14,fontWeight:700}}>{new Date(selData.ds).toLocaleDateString("it-IT",{weekday:"long",day:"numeric",month:"long"})}</h3>
             <button style={{...S.btnPrimary,width:"auto",padding:"5px 12px",fontSize:12}} onClick={()=>setNM({date:selData.ds,text:""})}>+ Nota</button>
           </div>
-          {selData.dayNotes.length>0&&<div style={{marginBottom:12}}>
-            <div style={{fontSize:11,fontWeight:700,color:"#9ca3af",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>📌 Note</div>
+          {selData.dayNotes.length>0&&<div style={{marginBottom:12}}><div style={{fontSize:11,fontWeight:700,color:"#9ca3af",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>📌 Note</div>
             {selData.dayNotes.map(n=><div key={n.id} style={{background:"#fffbeb",borderRadius:10,padding:"10px 12px",marginBottom:6,borderLeft:"3px solid #f59e0b",fontSize:13,display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}><span style={{flex:1}}>{n.text}</span><div style={{display:"flex",gap:4,flexShrink:0}}><button style={S.iconBtn} onClick={()=>setNM(n)}>✏️</button><button style={S.iconBtn} onClick={()=>onDeleteNote(n.id)}>🗑️</button></div></div>)}
           </div>}
           {selData.indiv.length===0&&selData.cls.length===0?<div style={{textAlign:"center",padding:"16px 0",color:"#9ca3af",fontSize:13}}>Nessuna lezione</div>:<>
             {selData.indiv.length>0&&<><div style={{fontSize:11,fontWeight:700,color:"#9ca3af",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>Individuali</div>
-              {[...selData.indiv].sort((a,b)=>(a.time||"").localeCompare(b.time||"")).map(l=>{const st=students.find(s=>s.id===l.student_id);const t=teachers.find(t=>t.id===l.teacher_id);return<div key={l.id} style={{background:"#f8fafc",borderRadius:10,padding:"10px 12px",marginBottom:8,borderLeft:`3px solid ${tc(l.teacher_id)}`}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}><span style={S.timeBadge}>{l.time}</span><div style={{display:"flex",gap:6,alignItems:"center"}}><ModeBadge mode={l.mode}/><Pill ok={l.present}/></div></div><div style={{fontWeight:600,fontSize:13}}>{st?.name||"—"}</div><div style={{fontSize:12,color:"#6b7280"}}>{l.topic} · {l.duration}min</div>{isAdmin&&<div style={{fontSize:11,color:tc(l.teacher_id),fontWeight:600,marginTop:2}}>👤 {t?.name}</div>}</div>;})}
+              {[...selData.indiv].sort((a,b)=>(a.time||"").localeCompare(b.time||"")).map(l=>{const st=students.find(s=>s.id===l.student_id);const t=teachers.find(t=>t.id===l.teacher_id);return<div key={l.id} style={{background:"#f8fafc",borderRadius:10,padding:"10px 12px",marginBottom:8,borderLeft:"3px solid "+tc(l.teacher_id)}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}><span style={S.timeBadge}>{l.time}</span><span style={{fontSize:11,color:"#6b7280"}}>{l.duration}min</span></div><div style={{fontWeight:600,fontSize:13}}>{st?.name||"—"}</div><div style={{fontSize:12,color:"#6b7280"}}>{l.topic}</div>{isAdmin&&<div style={{fontSize:11,color:tc(l.teacher_id),fontWeight:600,marginTop:2}}>👤 {t?.name}</div>}</div>;})}
             </>}
             {selData.cls.length>0&&<><div style={{fontSize:11,fontWeight:700,color:"#9ca3af",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6,marginTop:8}}>Classi</div>
-              {[...selData.cls].sort((a,b)=>(a.time||"").localeCompare(b.time||"")).map(l=>{const cls=classes.find(c=>c.id===l.class_id);const t=teachers.find(t=>t.id===l.teacher_id);const att=Object.values(l.attendances||{}).filter(Boolean).length;const tot2=Object.keys(l.attendances||{}).length;return<div key={l.id} style={{background:"#fffbeb",borderRadius:10,padding:"10px 12px",marginBottom:8,borderLeft:`3px solid ${tc(l.teacher_id)}`}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}><span style={S.timeBadge}>{l.time}</span><div style={{display:"flex",gap:6,alignItems:"center"}}><ModeBadge mode={l.mode}/><span style={{fontSize:12,color:"#6b7280"}}>{att}/{tot2} presenti</span></div></div><div style={{fontWeight:600,fontSize:13}}>{cls?.name||"—"} 👥</div><div style={{fontSize:12,color:"#6b7280"}}>{l.topic} · {l.duration}min</div>{isAdmin&&<div style={{fontSize:11,color:tc(l.teacher_id),fontWeight:600,marginTop:2}}>👤 {t?.name}</div>}</div>;})}
+              {[...selData.cls].sort((a,b)=>(a.time||"").localeCompare(b.time||"")).map(l=>{const cls=classes.find(c=>c.id===l.class_id);const t=teachers.find(t=>t.id===l.teacher_id);const att=Object.values(l.attendances||{}).filter(Boolean).length;const tot2=Object.keys(l.attendances||{}).length;return<div key={l.id} style={{background:"#fffbeb",borderRadius:10,padding:"10px 12px",marginBottom:8,borderLeft:"3px solid "+tc(l.teacher_id)}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}><span style={S.timeBadge}>{l.time}</span><span style={{fontSize:12,color:"#6b7280"}}>{att}/{tot2} presenti</span></div><div style={{fontWeight:600,fontSize:13}}>{cls?.name||"—"} 👥</div><div style={{fontSize:12,color:"#6b7280"}}>{l.topic}</div>{isAdmin&&<div style={{fontSize:11,color:tc(l.teacher_id),fontWeight:600,marginTop:2}}>👤 {t?.name}</div>}</div>;})}
             </>}
           </>}
         </>)}
@@ -836,21 +986,13 @@ function ReportsPage({user,students,classes,lessons,classLessons,teachers,isAdmi
 
 // ── REPORT STUDENTI ──────────────────────────────────────────────
 function StudentReportPage({user,students,lessons,isAdmin}) {
-  const [fStudent,setFStudent]=useState("");const [fYear,setFYear]=useState("");const [fMonth,setFMonth]=useState("");
+  const [fStudent,setFStudent]=useState("");const [fYear,setFYear]=useState("");const [fMonth,setFMonth]=useState("");const [openDetail,setOpenDetail]=useState(null);
   const myStudents=isAdmin?students:students.filter(s=>s.teacher_id===user.id);
   const myLessons=isAdmin?lessons:lessons.filter(l=>l.teacher_id===user.id);
   const years=[...new Set(myLessons.map(l=>l.date.slice(0,4)))].sort().reverse();
   const months=[...new Set(myLessons.filter(l=>!fYear||l.date.startsWith(fYear)).map(l=>l.date.slice(0,7)))].sort().reverse();
-  
-  const filteredLessons=myLessons.filter(l=>
-    (!fStudent||l.student_id===fStudent)&&
-    (!fYear||l.date.startsWith(fYear))&&
-    (!fMonth||l.date.startsWith(fMonth))
-  );
-  const byStudent=myStudents.map(s=>{
-    const sl=filteredLessons.filter(l=>l.student_id===s.id);
-    return{student:s,lessons:sl};
-  }).filter(x=>x.lessons.length>0||(fStudent&&x.student.id===fStudent));
+  const filteredLessons=myLessons.filter(l=>(!fStudent||l.student_id===fStudent)&&(!fYear||l.date.startsWith(fYear))&&(!fMonth||l.date.startsWith(fMonth)));
+  const byStudent=myStudents.map(s=>{const sl=filteredLessons.filter(l=>l.student_id===s.id);return{student:s,lessons:sl};}).filter(x=>x.lessons.length>0||(fStudent&&x.student.id===fStudent));
   return (<div style={S.page}>
     <div style={S.pageHeader}><div><h1 style={S.pageTitle}>📋 Report Studenti</h1><p style={S.pageSub}>Argomenti trattati per studente</p></div></div>
     <div style={{display:"flex",gap:10,marginBottom:20,flexWrap:"wrap",alignItems:"center"}}>
@@ -860,39 +1002,56 @@ function StudentReportPage({user,students,lessons,isAdmin}) {
       {(fStudent||fYear||fMonth)&&<button style={{...S.btnSecondary,padding:"8px 14px",fontSize:12}} onClick={()=>{setFStudent("");setFYear("");setFMonth("");}}>✕ Rimuovi filtri</button>}
     </div>
     {filteredLessons.length===0&&<Empty text="Nessuna lezione trovata con i filtri selezionati"/>}
-    {byStudent.map(({student,lessons:sl})=>(
-      <div key={student.id} style={{...S.card,marginBottom:20}}>
-        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:14}}>
-          <div style={S.studentAvatar}>{student.name.split(" ").map(n=>n[0]).join("").slice(0,2)}</div>
-          <div><div style={{fontWeight:700,fontSize:16}}>{student.name}</div><div style={{fontSize:12,color:"#6b7280"}}>{student.company&&<>🏢 {student.company} · </>}Livello {student.level} · {sl.length} lezioni</div></div>
-          <div style={{marginLeft:"auto",background:"#f0fdf4",borderRadius:10,padding:"8px 16px",fontSize:13,color:"#166534",fontWeight:600}}>📦 {student.package_used}/{student.package_total} · {pkgRemaining(student)} rimaste</div>
-        </div>
-        <div style={{...S.tableWrap,maxHeight:300,overflowY:"auto"}}>
-          <table style={S.table}><thead><tr><th style={S.th}>N°</th><th style={S.th}>Data</th><th style={S.th}>Ora</th><th style={S.th}>Durata</th><th style={S.th}>Argomento</th><th style={S.th}>Compiti</th><th style={S.th}>Modalità</th><th style={S.th}>Presenza</th></tr></thead>
-          <tbody>{[...sl].sort((a,b)=>a.date.localeCompare(b.date)).map((l,i)=>(
-            <tr key={l.id} style={S.tr}>
-              <td style={{...S.td,fontWeight:700,color:"#6366f1"}}>{i+1}/{student.package_total}</td>
-              <td style={S.td}>{fmtDate(l.date)}</td>
-              <td style={S.td}><span style={S.timeBadge}>{l.time||"—"}</span></td>
-              <td style={S.td}><span style={{fontSize:12,color:"#6b7280"}}>{l.duration}m</span></td>
-              <td style={{...S.td,maxWidth:200}}>{l.topic||<span style={{color:"#9ca3af",fontStyle:"italic"}}>—</span>}</td>
-              <td style={{...S.td,maxWidth:150,fontSize:12,color:"#6b7280"}}>{l.homework||"—"}</td>
-              <td style={S.td}><ModeBadge mode={l.mode}/></td>
-              <td style={S.td}><Pill ok={l.present}/></td>
-            </tr>
-          ))}</tbody></table>
-        </div>
+    {byStudent.length>0&&(
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {byStudent.map(({student,lessons:sl})=>(
+          <div key={student.id} style={{background:"white",borderRadius:14,border:"1px solid #f1f5f9",overflow:"hidden"}}>
+            <div style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",cursor:"pointer"}} onClick={()=>setOpenDetail(openDetail===student.id?null:student.id)}>
+              <div style={{...S.studentAvatar,width:36,height:36,fontSize:12,flexShrink:0}}>{student.name.split(" ").map(n=>n[0]).join("").slice(0,2)}</div>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:700,fontSize:15}}>{student.name}</div>
+                <div style={{fontSize:12,color:"#6b7280"}}>{student.company&&<>🏢 {student.company} · </>}Livello {student.level} · {sl.length} lezioni</div>
+              </div>
+              <div style={{background:"#f0fdf4",borderRadius:10,padding:"6px 14px",fontSize:13,color:"#166534",fontWeight:600}}>📦 {student.package_used}/{student.package_total} · {pkgRemaining(student)} rimaste</div>
+              <button style={{...S.btnSm,padding:"5px 14px",fontSize:12,flexShrink:0}}>{openDetail===student.id?"▲ Chiudi":"▼ Dettagli"}</button>
+            </div>
+            {openDetail===student.id&&(
+              <div style={{borderTop:"1px solid #f1f5f9",padding:"0 0 12px 0"}}>
+                <div style={{...S.tableWrap,maxHeight:320,overflowY:"auto"}}>
+                  <table style={S.table}><thead><tr><th style={S.th}>N°</th><th style={S.th}>Data</th><th style={S.th}>Ora</th><th style={S.th}>Durata</th><th style={S.th}>Argomento</th><th style={S.th}>Compiti</th><th style={S.th}>Modalità</th><th style={S.th}>Presenza</th></tr></thead>
+                  <tbody>{[...sl].sort((a,b)=>a.date.localeCompare(b.date)).map((l,i)=>(
+                    <tr key={l.id} style={S.tr}>
+                      <td style={{...S.td,fontWeight:700,color:"#6366f1"}}>{i+1}/{student.package_total}</td>
+                      <td style={S.td}>{fmtDate(l.date)}</td>
+                      <td style={S.td}><span style={S.timeBadge}>{l.time||"—"}</span></td>
+                      <td style={S.td}><span style={{fontSize:12,color:"#6b7280"}}>{l.duration}m</span></td>
+                      <td style={{...S.td,maxWidth:200}}>{l.topic||<span style={{color:"#9ca3af",fontStyle:"italic"}}>—</span>}</td>
+                      <td style={{...S.td,maxWidth:150,fontSize:12,color:"#6b7280"}}>{l.homework||"—"}</td>
+                      <td style={S.td}><ModeBadge mode={l.mode}/></td>
+                      <td style={S.td}><Pill ok={l.present}/></td>
+                    </tr>
+                  ))}</tbody></table>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
       </div>
-    ))}
+    )}
   </div>);
 }
 
 // ── ARCHIVIO — identico all'originale ────────────────────────────
 function ArchivePage({students,teachers,lessons,onRestore,onTrash}) {
-  const [restoreModal,setRM]=useState(null);const [selected,setSel]=useState(null);const [confirmTrash,setConfirmTrash]=useState(null);
+  const [restoreModal,setRM]=useState(null);const [selected,setSel]=useState(null);const [confirmTrash,setConfirmTrash]=useState(null);const [archSearch,setArchSearch]=useState("");
+  const filteredArch=students.filter(s=>!archSearch||s.name.toLowerCase().includes(archSearch.toLowerCase()));
   return (<div style={S.page}>
     <h1 style={S.pageTitle}>Archivio Studenti</h1><p style={S.pageSub}>Solo l'amministratore può accedere a questa sezione.</p>
-    {students.length===0?<Empty text="L'archivio è vuoto"/>:(<div style={S.cardGrid}>{students.map(student=>{
+    <div style={{display:"flex",gap:10,marginBottom:16,alignItems:"center"}}>
+      <input style={{...S.input,width:"auto",minWidth:240}} placeholder="🔍 Cerca per nome…" value={archSearch} onChange={e=>setArchSearch(e.target.value)}/>
+      {archSearch&&<button style={{...S.btnSecondary,padding:"8px 14px",fontSize:12}} onClick={()=>setArchSearch("")}>✕ Rimuovi</button>}
+    </div>
+    {students.length===0?<Empty text="L'archivio è vuoto"/>:filteredArch.length===0?<Empty text="Nessuno studente trovato"/>:(<div style={S.cardGrid}>{filteredArch.map(student=>{
       const sl=lessons.filter(l=>l.student_id===student.id);const teacher=teachers.find(t=>t.id===student.teacher_id);
       return(<div key={student.id} style={{...S.studentCard,borderLeft:"4px solid #8b5cf6"}}>
         <div style={S.cardTop}><div style={{...S.studentAvatar,background:"#8b5cf620",color:"#8b5cf6"}}>{student.name.split(" ").map(n=>n[0]).join("").slice(0,2)}</div><div style={{flex:1}}><div style={S.studentName}>{student.name}</div><div style={S.studentMeta}>Ultimo ins: {teacher?.name||"—"}</div></div><LevelBadge level={student.level}/></div>
@@ -948,7 +1107,7 @@ function ColorPicker({color,onChange}) {
 }
 // ── AMMINISTRAZIONE — identica all'originale ──────────────────────
 function AdminPage({teachers,students,lessons,classLessons,onAddTeacher,onDeleteTeacher,onUpdateTeacher,onReassignStudent}) {
-  const [tm,setTM]=useState(false);const [confirm,setConfirm]=useState(null);const [rm,setRM]=useState(null);const [editT,setEditT]=useState(null);
+  const [tm,setTM]=useState(false);const [confirm,setConfirm]=useState(null);const [rm,setRM]=useState(null);const [editT,setEditT]=useState(null);const [reassignSearch,setReassignSearch]=useState("");const [reassignView,setReassignView]=useState("name");
   const active=students.filter(s=>s.active);
   return (<div style={S.page}>
     <div style={S.pageHeader}><div><h1 style={S.pageTitle}>Amministrazione</h1><p style={S.pageSub}>Gestione insegnanti e riassegnazioni</p></div><button style={{...S.btnPrimary,width:"auto"}} onClick={()=>setTM(true)}>+ Nuovo Insegnante</button></div>
@@ -968,9 +1127,34 @@ function AdminPage({teachers,students,lessons,classLessons,onAddTeacher,onDelete
       </table></div>
     </div>
     <div style={S.section}><h2 style={S.sectionTitle}>Riassegna Studenti</h2>
-      <div style={S.tableWrap}><table style={S.table}><thead><tr><th style={S.th}>Studente</th><th style={S.th}>Livello</th><th style={S.th}>Insegnante attuale</th><th style={S.th}></th></tr></thead>
-        <tbody>{active.map(s=>{const t=teachers.find(x=>x.id===s.teacher_id);return(<tr key={s.id} style={S.tr}><td style={S.td}><strong>{s.name}</strong></td><td style={S.td}><LevelBadge level={s.level}/></td><td style={S.td}>{t?.name||"—"}</td><td style={S.td}><button style={{...S.btnSm,flex:"none",width:"auto",padding:"6px 14px"}} onClick={()=>setRM(s)}>🔄 Riassegna</button></td></tr>);})}</tbody>
-      </table></div>
+      <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
+        <input style={{...S.input,width:"auto",minWidth:220}} placeholder="🔍 Cerca studente per nome…" value={reassignSearch} onChange={e=>setReassignSearch(e.target.value)}/>
+        <div style={{display:"flex",gap:4,background:"#f1f5f9",borderRadius:8,padding:3}}>{[["name","Per nome"],["teacher","Per insegnante"]].map(([v,l])=><button key={v} onClick={()=>setReassignView(v)} style={{padding:"5px 12px",borderRadius:6,border:"none",cursor:"pointer",fontWeight:600,fontSize:12,background:reassignView===v?"white":"transparent",color:reassignView===v?"#374151":"#9ca3af",boxShadow:reassignView===v?"0 1px 3px rgba(0,0,0,0.1)":"none"}}>{l}</button>)}</div>
+        {reassignSearch&&<button style={{...S.btnSecondary,padding:"5px 12px",fontSize:12}} onClick={()=>setReassignSearch("")}>✕</button>}
+      </div>
+      {reassignView==="name"?(
+        <div style={S.tableWrap}><table style={S.table}><thead><tr><th style={S.th}>Studente</th><th style={S.th}>Livello</th><th style={S.th}>Insegnante attuale</th><th style={S.th}></th></tr></thead>
+          <tbody>{active.filter(s=>!reassignSearch||s.name.toLowerCase().includes(reassignSearch.toLowerCase())).map(s=>{const t=teachers.find(x=>x.id===s.teacher_id);return(<tr key={s.id} style={S.tr}><td style={S.td}><strong>{s.name}</strong></td><td style={S.td}><LevelBadge level={s.level}/></td><td style={S.td}>{t?.name||"—"}</td><td style={S.td}><button style={{...S.btnSm,flex:"none",width:"auto",padding:"6px 14px"}} onClick={()=>setRM(s)}>🔄 Riassegna</button></td></tr>);})}</tbody>
+        </table></div>
+      ):(
+        <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          {teachers.filter(t=>t.role==="teacher").map(t=>{
+            const ts=active.filter(s=>s.teacher_id===t.id&&(!reassignSearch||s.name.toLowerCase().includes(reassignSearch.toLowerCase())));
+            if(ts.length===0&&!reassignSearch) return null;
+            return(<div key={t.id} style={{background:"white",borderRadius:12,border:"1px solid #f1f5f9",overflow:"hidden"}}>
+              <div style={{background:"#f8fafc",padding:"10px 16px",borderBottom:"1px solid #f1f5f9",display:"flex",alignItems:"center",gap:8}}>
+                <span style={{width:10,height:10,borderRadius:"50%",background:t.color,display:"inline-block"}}/>
+                <span style={{fontWeight:700,fontSize:14,color:t.color}}>{t.name}</span>
+                <span style={{fontSize:12,color:"#9ca3af",marginLeft:4}}>{ts.length} studenti</span>
+              </div>
+              {ts.length===0?<div style={{padding:"10px 16px",fontSize:13,color:"#9ca3af"}}>Nessuno studente</div>:
+              <table style={S.table}><thead><tr><th style={S.th}>Studente</th><th style={S.th}>Livello</th><th style={S.th}></th></tr></thead>
+                <tbody>{ts.map(s=>(<tr key={s.id} style={S.tr}><td style={S.td}><strong>{s.name}</strong></td><td style={S.td}><LevelBadge level={s.level}/></td><td style={S.td}><button style={{...S.btnSm,flex:"none",width:"auto",padding:"6px 14px"}} onClick={()=>setRM(s)}>🔄 Riassegna</button></td></tr>))}</tbody>
+              </table>}
+            </div>);
+          })}
+        </div>
+      )}
     </div>
     {(tm||editT)&&<TeacherModal teacher={editT} onSave={t=>{editT?onUpdateTeacher(t):onAddTeacher(t);setTM(false);setEditT(null);}} onClose={()=>{setTM(false);setEditT(null);}}/>}
     {confirm&&<ConfirmModal title="Rimuovi insegnante" text="I dati resteranno." onConfirm={()=>{onDeleteTeacher(confirm);setConfirm(null);}} onClose={()=>setConfirm(null)}/>}
