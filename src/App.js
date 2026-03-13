@@ -422,7 +422,7 @@ function HomePage({user,students,lessons,classLessons,classes,teachers,setPage,i
     const relL=dashFilter==="today"?[...lessons.filter(l=>l.date===todayStr),...classLessons.filter(l=>l.date===todayStr)]:[...lessons.filter(l=>l.date>=weekStart&&l.date<=weekEnd),...classLessons.filter(l=>l.date>=weekStart&&l.date<=weekEnd)];
     const sids=new Set();relL.forEach(l=>{if(l.student_id)sids.add(l.student_id);if(l.attendances)Object.keys(l.attendances).forEach(id=>sids.add(id));});
     return active.filter(s=>sids.has(s.id));
-  },[dashFilter,active,lessons,classLessons,todayStr,weekStart,isAdmin]);
+  },[dashFilter,active,lessons,classLessons,todayStr,weekStart,weekEnd,isAdmin]);
   const todayIndiv=(isAdmin?lessons:lessons.filter(l=>l.teacher_id===user.id)).filter(l=>l.date===todayStr).sort((a,b)=>(a.time||"").localeCompare(b.time||""));
   const todayClass=(isAdmin?classLessons:classLessons.filter(l=>l.teacher_id===user.id)).filter(l=>l.date===todayStr).sort((a,b)=>(a.time||"").localeCompare(b.time||""));
   const lowS=active.filter(s=>pkgRemaining(s)<=3&&s.package_total>0);
@@ -592,7 +592,7 @@ function LessonsPage({user,students,lessons,teachers,isAdmin,onAdd,onAddRecurrin
             <div key={date} style={{background:"white",borderRadius:16,border:"1px solid #f1f5f9",overflow:"hidden",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
               <div style={{background:"#f8fafc",padding:"10px 18px",borderBottom:"1px solid #f1f5f9",display:"flex",alignItems:"center",gap:10}}>
                 <span style={{fontWeight:700,fontSize:14,color:"#374151"}}>{new Date(date+"T00:00:00").toLocaleDateString("it-IT",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</span>
-                <span style={{marginLeft:"auto",fontSize:12,color:"#9ca3af",background:"#e0e7ff",color:"#4f46e5",borderRadius:20,padding:"2px 10px",fontWeight:600}}>{dayLessons.length} lezioni</span>
+                <span style={{marginLeft:"auto",fontSize:12,background:"#e0e7ff",color:"#4f46e5",borderRadius:20,padding:"2px 10px",fontWeight:600}}>{dayLessons.length} lezioni</span>
               </div>
               <div style={{padding:"8px 0"}}>
                 {[...dayLessons].sort((a,b)=>(a.time||"").localeCompare(b.time||"")).map(l=>{
