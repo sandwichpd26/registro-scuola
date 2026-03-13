@@ -573,7 +573,18 @@ function StudentsPage({user,students,classes,teachers,lessons,classLessons,isAdm
 
 function StudentModal({user,teachers,student,onSave,onClose}) {
   const [form,setForm]=useState(student||{name:"",level:1,teacher_id:user.role==="admin"?"":user.id,phone:"",email:"",company:"",notes:"",package_total:10,package_used:0,is_class_student:false});
+  const [newPkg,setNewPkg]=useState(false);
+  const [newPkgTotal,setNewPkgTotal]=useState(student?.package_total||10);
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+  const handleSave=()=>{
+    if(newPkg&&student){
+      const entry={date:today(),total:form.package_total,used:form.package_used,remaining:pkgRemaining(form)};
+      const history=Array.isArray(form.package_history)?form.package_history:[];
+      onSave({...form,package_total:newPkgTotal,package_used:0,package_history:[...history,entry]});
+    } else {
+      onSave(form);
+    }
+  };
   return (<Overlay onClose={onClose}>
     <h2 style={S.modalTitle}>{student?"Modifica Studente":"Nuovo Studente"}</h2>
     <div style={S.field}><label style={S.label}>Nome completo *</label><input style={S.input} value={form.name} onChange={e=>set("name",e.target.value)} placeholder="Es. Mario Rossi"/></div>
@@ -582,9 +593,19 @@ function StudentModal({user,teachers,student,onSave,onClose}) {
     <div style={S.field}><label style={S.label}>Azienda</label><input style={S.input} value={form.company||""} onChange={e=>set("company",e.target.value)} placeholder="Es. Acme Srl (opzionale)"/></div>
     {user.role==="admin"&&<div style={{background:"#f0f9ff",borderRadius:10,padding:"10px 14px",marginBottom:14}}><label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:13,fontWeight:600,color:"#0369a1"}}><input type="checkbox" checked={form.is_class_student||false} onChange={e=>set("is_class_student",e.target.checked)}/> 👥 Studente di classe aziendale (non compare nelle lezioni individuali)</label></div>}
     <div style={S.fieldRow}><div style={S.field}><label style={S.label}>Lezioni pacchetto</label><input type="number" min="1" style={S.input} value={form.package_total||10} onChange={e=>set("package_total",Number(e.target.value))}/></div><div style={S.field}><label style={S.label}>Già usate</label><input type="number" min="0" style={S.input} value={form.package_used||0} onChange={e=>set("package_used",Number(e.target.value))}/></div></div>
+    {student&&<div style={{background:newPkg?"#f0fdf4":"#f8fafc",border:`1.5px solid ${newPkg?"#10b981":"#e2e8f0"}`,borderRadius:12,padding:"14px 16px",marginBottom:14}}>
+      <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontWeight:600,fontSize:13,color:newPkg?"#065f46":"#374151",marginBottom:newPkg?12:0}}>
+        <input type="checkbox" checked={newPkg} onChange={e=>setNewPkg(e.target.checked)}/> 🔄 Nuovo pacchetto (salva quello attuale nello storico)
+      </label>
+      {newPkg&&<div style={{display:"flex",alignItems:"center",gap:10,marginTop:4}}>
+        <label style={{...S.label,margin:0,whiteSpace:"nowrap"}}>Lezioni nuovo pacchetto:</label>
+        <input type="number" min="1" style={{...S.input,width:100}} value={newPkgTotal} onChange={e=>setNewPkgTotal(Number(e.target.value))}/>
+        <span style={{fontSize:12,color:"#6b7280"}}>Le lezioni usate verranno azzerate a 0</span>
+      </div>}
+    </div>}
     {user.role==="admin"&&<div style={S.field}><label style={S.label}>Insegnante</label><select style={S.input} value={form.teacher_id||""} onChange={e=>set("teacher_id",e.target.value)}><option value="">— Seleziona —</option>{teachers.filter(t=>t.role==="teacher").map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></div>}
     <div style={S.field}><label style={S.label}>Note</label><textarea style={{...S.input,height:72,resize:"vertical"}} value={form.notes||""} onChange={e=>set("notes",e.target.value)}/></div>
-    <div style={S.modalActions}><button style={S.btnSecondary} onClick={onClose}>Annulla</button><button style={{...S.btnPrimary,width:"auto"}} disabled={!form.name} onClick={()=>onSave(form)}>{student?"Salva Modifiche":"Aggiungi Studente"}</button></div>
+    <div style={S.modalActions}><button style={S.btnSecondary} onClick={onClose}>Annulla</button><button style={{...S.btnPrimary,width:"auto"}} disabled={!form.name} onClick={handleSave}>{student?"Salva Modifiche":"Aggiungi Studente"}</button></div>
   </Overlay>);
 }
 
