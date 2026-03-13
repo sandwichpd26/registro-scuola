@@ -153,7 +153,7 @@ export default function App() {
   };
 
   const addStudent = async s => {
-    const obj={...s,id:uid(),active:true,package_used:0};
+    const obj={...s,id:uid(),active:true,package_used:s.package_used||0};
     setStudents(p=>[...p,obj]);
     try { await db.upsertStudent(obj); showToast("Studente aggiunto"); }
     catch(e) { setStudents(p=>p.filter(x=>x.id!==obj.id)); showToast("Errore salvataggio","err"); }
