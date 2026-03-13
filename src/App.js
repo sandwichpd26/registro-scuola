@@ -124,6 +124,8 @@ export default function App() {
   const trashedStudents  = isAdmin ? students.filter(s=>s.deleted) : [];
   const safePage         = (!isAdmin&&["archive","admin","trash"].includes(page))?"home":page;
   const [profileModal,setProfileModal]=useState(false);
+  const [seenHomework,setSeenHomework]=useState(()=>{try{return JSON.parse(localStorage.getItem("seen_homework")||"[]");}catch{return[];}});
+  const [reviewHomework,setReviewHomework]=useState(()=>{try{return JSON.parse(localStorage.getItem("review_homework")||"[]");}catch{return[];}});
   const [themeKey,setThemeKey]=useState(()=>localStorage.getItem("app_theme")||"indigo");
   const th=THEMES[themeKey]||THEMES.indigo;
   const changeTheme=(key)=>{setThemeKey(key);localStorage.setItem("app_theme",key);};
@@ -305,7 +307,7 @@ export default function App() {
   const myNotes = notes.filter(n=>n.user_id===currentUser.id);
 
   const pages = {
-    home:     <HomePage     user={currentUser} students={myStudents} lessons={lessons} classLessons={classLessons} classes={myClasses} teachers={teachers} setPage={setPage} isAdmin={isAdmin}/>,
+    home:     <HomePage     user={currentUser} students={myStudents} lessons={lessons} classLessons={classLessons} classes={myClasses} teachers={teachers} setPage={setPage} isAdmin={isAdmin} seenHomework={seenHomework} setSeenHomework={setSeenHomework} reviewHomework={reviewHomework} setReviewHomework={setReviewHomework}/>,
     students: <StudentsPage user={currentUser} students={allActiveStudents} classes={myClasses} teachers={teachers} lessons={lessons} classLessons={classLessons} isAdmin={isAdmin} onAdd={addStudent} onUpdate={updateStudent} onArchive={archiveStudent} onTrash={trashStudent}/>,
     lessons:  <LessonsPage  user={currentUser} students={activeStudents} lessons={lessons} teachers={teachers} isAdmin={isAdmin} onAdd={addLesson} onAddRecurring={addRecurringLessons} onUpdate={updateLesson} onDelete={deleteLesson}/>,
     classes:  <ClassesPage  user={currentUser} students={allActiveStudents} classes={myClasses} classLessons={myClassLessons} teachers={teachers} isAdmin={isAdmin} onAddClass={addClass} onUpdateClass={updateClass} onDeleteClass={deleteClass} onAddClassLesson={addClassLesson} onUpdateClassLesson={updateClassLesson} onDeleteClassLesson={deleteClassLesson}/>,
@@ -411,9 +413,24 @@ function Sidebar({user,page,setPage,isAdmin,onLogout,onProfile,archivedCount,tra
 }
 
 // ── HOME PAGE — identica all'originale ───────────────────────────
-function HomePage({user,students,lessons,classLessons,classes,teachers,setPage,isAdmin}) {
-  const [dashFilter,setDashFilter]=useState("today");const [dashDetail,setDashDetail]=useState(null);
+function HomePage({user,students,lessons,classLessons,classes,teachers,setPage,isAdmin,seenHomework,setSeenHomework,reviewHomework,setReviewHomework}) {
+  const [dashFilter,setDashFilter]=useState("today");const [dashDetail,setDashDetail]=useState(null);const [hwPanel,setHwPanel]=useState(false);
   const active=students.filter(s=>s.active);
+  const allHomework=useMemo(()=>lessons.filter(l=>l.homework&&l.homework.trim()!==""),[lessons]);
+  const unseenHw=useMemo(()=>allHomework.filter(l=>!seenHomework.includes(l.id)||reviewHomework.includes(l.id)),[allHomework,seenHomework,reviewHomework]);
+  const markAllSeen=()=>{
+    const ids=unseenHw.map(l=>l.id);
+    const newSeen=[...new Set([...seenHomework,...ids])];
+    const newReview=reviewHomework.filter(id=>!ids.includes(id));
+    setSeenHomework(newSeen);setReviewHomework(newReview);
+    try{localStorage.setItem("seen_homework",JSON.stringify(newSeen));localStorage.setItem("review_homework",JSON.stringify(newReview));}catch{}
+  };
+  const markReview=(id)=>{
+    const newReview=[...new Set([...reviewHomework,id])];
+    setReviewHomework(newReview);
+    try{localStorage.setItem("review_homework",JSON.stringify(newReview));}catch{}
+  };
+  const openHwPanel=()=>{setHwPanel(true);markAllSeen();};
   const myL=isAdmin?lessons:lessons.filter(l=>l.teacher_id===user.id);
   const todayStr=today();
   const weekStart=useMemo(()=>{const d=new Date();d.setHours(0,0,0,0);const day=d.getDay();d.setDate(d.getDate()-(day===0?6:day-1));return d.toISOString().split("T")[0];},[]);
@@ -430,8 +447,14 @@ function HomePage({user,students,lessons,classLessons,classes,teachers,setPage,i
   const lowC=classes.filter(c=>pkgRemaining(c)<=3&&c.package_total>0);
   const thisWeek=myL.filter(l=>l.date>=weekStart&&l.date<=weekEnd);
   return (<div style={S.page}>
-    <h1 style={S.pageTitle}>Ciao, {user.name.split(" ")[0]}! 👋</h1>
-    <p style={S.pageSub}>{new Date().toLocaleDateString("it-IT",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</p>
+    <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:4}}>
+      <div><h1 style={S.pageTitle}>Ciao, {user.name.split(" ")[0]}! 👋</h1>
+      <p style={{...S.pageSub,margin:0}}>{new Date().toLocaleDateString("it-IT",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</p></div>
+      {isAdmin&&<button onClick={openHwPanel} style={{position:"relative",background:"white",border:"1px solid #e2e8f0",borderRadius:14,padding:"10px 18px",cursor:"pointer",display:"flex",alignItems:"center",gap:8,fontSize:14,fontWeight:600,color:"#374151",boxShadow:"0 1px 3px rgba(0,0,0,0.06)"}}>
+        📝 Compiti assegnati
+        {unseenHw.length>0&&<span style={{background:"#ef4444",color:"white",borderRadius:"50%",width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700}}>{unseenHw.length}</span>}
+      </button>}
+    </div>
     <div style={S.statsGrid}>{[{label:"Studenti Attivi",value:active.length,icon:"👤",color:"#10b981",action:()=>setPage("students")},{label:"Lezioni (sett.)",value:thisWeek.length,icon:"📚",color:"#6366f1",action:()=>setPage("lessons")},{label:"Classi",value:classes.length,icon:"👥",color:"#f59e0b",action:()=>setPage("classes")},{label:"Pacchetti in scadenza",value:lowS.length+lowC.length,icon:"⚠️",color:"#ef4444",action:()=>setPage("reports")}].map((s,i)=>(
       <div key={i} style={{...S.statCard,cursor:"pointer"}} onClick={s.action}><div style={{...S.statIcon,background:s.color+"20",color:s.color}}>{s.icon}</div><div style={S.statValue}>{s.value}</div><div style={S.statLabel}>{s.label}</div></div>
     ))}</div>
@@ -467,7 +490,38 @@ function HomePage({user,students,lessons,classLessons,classes,teachers,setPage,i
       </table></div>
     </div>
     {dashDetail&&<StudentDetailModal student={dashDetail} lessons={lessons.filter(l=>l.student_id===dashDetail.id)} onClose={()=>setDashDetail(null)}/>}
+    {hwPanel&&isAdmin&&<HomeworkPanel lessons={unseenHw} students={students} teachers={teachers} onMarkReview={markReview} onClose={()=>setHwPanel(false)}/>}
   </div>);
+}
+
+function HomeworkPanel({lessons,students,teachers,onMarkReview,onClose}) {
+  const sorted=[...lessons].sort((a,b)=>b.date.localeCompare(a.date));
+  return (<Overlay onClose={onClose} wide>
+    <h2 style={S.modalTitle}>📝 Compiti assegnati</h2>
+    {sorted.length===0
+      ? <div style={{textAlign:"center",padding:"40px 0",color:"#9ca3af"}}><div style={{fontSize:36,marginBottom:8}}>✅</div><div>Nessun compito da vedere</div></div>
+      : <div style={{display:"flex",flexDirection:"column",gap:10,maxHeight:"60vh",overflowY:"auto"}}>
+          {sorted.map(l=>{
+            const st=students.find(s=>s.id===l.student_id);
+            const t=teachers.find(t=>t.id===l.teacher_id);
+            return(<div key={l.id} style={{background:"#fffbeb",borderRadius:12,padding:"14px 16px",border:"1px solid #fde68a",display:"flex",gap:12,alignItems:"flex-start"}}>
+              <div style={{fontSize:24}}>📝</div>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:700,fontSize:14,marginBottom:2}}>{st?.name||"—"}</div>
+                <div style={{fontSize:13,color:"#374151",marginBottom:4}}>{l.homework}</div>
+                <div style={{fontSize:11,color:"#9ca3af",display:"flex",gap:10}}>
+                  <span>📅 {fmtDate(l.date)}</span>
+                  <span>🎓 {t?.name||"—"}</span>
+                  {l.topic&&<span>📖 {l.topic}</span>}
+                </div>
+              </div>
+              <button onClick={()=>onMarkReview(l.id)} style={{flexShrink:0,background:"#fef3c7",border:"1px solid #fcd34d",borderRadius:8,padding:"5px 10px",fontSize:12,fontWeight:600,color:"#92400e",cursor:"pointer",whiteSpace:"nowrap"}}>⭐ Da rivedere</button>
+            </div>);
+          })}
+        </div>
+    }
+    <div style={{marginTop:16,textAlign:"right"}}><button style={S.btnSecondary} onClick={onClose}>Chiudi</button></div>
+  </Overlay>);
 }
 
 // ── STUDENTI & CLASSI — identica all'originale ────────────────────
@@ -635,7 +689,7 @@ function LessonModal({user,students,lesson,onSave,onSaveRecurring,onClose}) {
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   return (<Overlay onClose={onClose}>
     <h2 style={S.modalTitle}>{lesson?"Modifica Lezione":"Nuova Lezione"}</h2>
-    <div style={S.field}><label style={S.label}>Studente *</label><select style={S.input} value={form.student_id} onChange={e=>set("student_id",e.target.value)}><option value="">— Seleziona —</option>{students.map(s=><option key={s.id} value={s.id}>{s.name} (Liv. {s.level})</option>)}</select></div>
+    <div style={S.field}><label style={S.label}>Studente *</label><select style={S.input} value={form.student_id} onChange={e=>set("student_id",e.target.value)}><option value="">— Seleziona —</option>{students.map(s=><option key={s.id} value={s.id}>{s.name} — Liv. {s.level}</option>)}</select></div>
     <div style={S.fieldRow}><div style={S.field}><label style={S.label}>Data *</label><input type="date" style={S.input} value={form.date} onChange={e=>set("date",e.target.value)}/></div><div style={S.field}><label style={S.label}>Orario *</label><input type="time" style={S.input} value={form.time||""} onChange={e=>set("time",e.target.value)}/></div><div style={S.field}><label style={S.label}>Durata</label><select style={S.input} value={form.duration||60} onChange={e=>set("duration",Number(e.target.value))}>{DURATIONS.map(d=><option key={d} value={d}>{d} min</option>)}</select></div></div>
     <div style={S.field}><label style={S.label}>Argomento trattato</label><input style={S.input} value={form.topic||""} onChange={e=>set("topic",e.target.value)} placeholder="Es. Present Perfect… (opzionale)"/></div>
     <div style={S.field}><label style={S.label}>Compiti assegnati</label><input style={S.input} value={form.homework||""} onChange={e=>set("homework",e.target.value)} placeholder="Es. Ex. 3-5 pag. 28…"/></div>
