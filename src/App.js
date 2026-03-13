@@ -1228,7 +1228,7 @@ function AdminPage({teachers,students,lessons,classLessons,onAddTeacher,onDelete
       const t=teachers.find(x=>x.id===s.teacher_id);
       rows.push([s.name,s.email||"",s.phone||"",s.level,t?.name||"",s.package_total||0,s.package_used||0,pkgRemaining(s),s.active?"Si":"No",s.company||"",s.notes||""]);
     });
-    const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'\"')}"` ).join(",")).join("\n");
+    const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"` ).join(",")).join("\n");
     const blob=new Blob([csv],{type:"text/csv;charset=utf-8;"});
     const url=URL.createObjectURL(blob);
     const a=document.createElement("a");a.href=url;a.download=`studenti_${today()}.csv`;a.click();
