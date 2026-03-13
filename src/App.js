@@ -159,8 +159,16 @@ export default function App() {
     catch(e) { setStudents(p=>p.filter(x=>x.id!==obj.id)); showToast("Errore salvataggio","err"); }
   };
   const updateStudent = async s => {
-    setStudents(p=>p.map(x=>x.id===s.id?s:x));
-    try { await db.upsertStudent(s); showToast("Modifiche salvate"); }
+    const prev=students.find(x=>x.id===s.id);
+    // Se il pacchetto totale cambia e c'erano lezioni usate, salva storico
+    let updatedS=s;
+    if(prev&&s.package_total!==prev.package_total&&prev.package_used>0){
+      const entry={date:today(),total:prev.package_total,used:prev.package_used,remaining:pkgRemaining(prev)};
+      const history=Array.isArray(prev.package_history)?prev.package_history:[];
+      updatedS={...s,package_history:[...history,entry]};
+    }
+    setStudents(p=>p.map(x=>x.id===s.id?updatedS:x));
+    try { await db.upsertStudent(updatedS); showToast("Modifiche salvate"); }
     catch(e) { showToast("Errore salvataggio","err"); }
   };
   const archiveStudent = async id => {
@@ -484,9 +492,9 @@ function HomePage({user,students,lessons,classLessons,classes,teachers,setPage,i
         </>}
       </div>
     </div>
-    <div style={S.section}><h2 style={S.sectionTitle}>Ultime lezioni</h2>
+    <div style={S.section}><h2 style={S.sectionTitle}>Prossime lezioni</h2>
       <div style={S.tableWrap}><table style={S.table}><thead><tr><th style={S.th}>N°</th><th style={S.th}>Data</th><th style={S.th}>Ora</th><th style={S.th}>Studente</th><th style={S.th}>Argomento</th><th style={S.th}>Modalità</th><th style={S.th}>Presenza</th></tr></thead>
-        <tbody>{[...myL].sort((a,b)=>a.date.localeCompare(b.date)).slice(0,5).map(l=>{const st=students.find(s=>s.id===l.student_id);const idx=lessons.filter(x=>x.student_id===l.student_id).sort((a,b)=>a.date.localeCompare(b.date)).findIndex(x=>x.id===l.id)+1;return(<tr key={l.id} style={S.tr}><td style={S.td}><LessonCounter current={idx} total={st?.package_total||0}/></td><td style={S.td}>{fmtDate(l.date)}</td><td style={S.td}><span style={S.timeBadge}>{l.time}</span></td><td style={S.td}><strong>{st?.name||"—"}</strong></td><td style={{...S.td,maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.topic}</td><td style={S.td}><ModeBadge mode={l.mode}/></td><td style={S.td}><Pill ok={l.present}/></td></tr>);})}</tbody>
+        <tbody>{[...myL].filter(l=>l.date>=todayStr).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,5).map(l=>{const st=students.find(s=>s.id===l.student_id);const idx=lessons.filter(x=>x.student_id===l.student_id).sort((a,b)=>a.date.localeCompare(b.date)).findIndex(x=>x.id===l.id)+1;return(<tr key={l.id} style={S.tr}><td style={S.td}><LessonCounter current={idx} total={st?.package_total||0}/></td><td style={S.td}>{fmtDate(l.date)}</td><td style={S.td}><span style={S.timeBadge}>{l.time}</span></td><td style={S.td}><strong>{st?.name||"—"}</strong></td><td style={{...S.td,maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.topic}</td><td style={S.td}><ModeBadge mode={l.mode}/></td><td style={S.td}><Pill ok={l.present}/></td></tr>);})}</tbody>
       </table></div>
     </div>
     {dashDetail&&<StudentDetailModal student={dashDetail} lessons={lessons.filter(l=>l.student_id===dashDetail.id)} onClose={()=>setDashDetail(null)}/>}
@@ -589,6 +597,20 @@ function StudentDetailModal({student,lessons,onClose}) {
     <div style={{...S.tableWrap,maxHeight:280,overflowY:"auto"}}><table style={S.table}><thead><tr><th style={S.th}>N°</th><th style={S.th}>Data</th><th style={S.th}>Ora</th><th style={S.th}>Argomento</th><th style={S.th}>Compiti</th><th style={S.th}>Modalità</th><th style={S.th}>Presenza</th></tr></thead>
       <tbody>{sorted.map((l,i)=><tr key={l.id} style={S.tr}><td style={{...S.td,fontWeight:700,color:"#6366f1"}}>{i+1}/{student.package_total}</td><td style={S.td}>{fmtDate(l.date)}</td><td style={S.td}><span style={S.timeBadge}>{l.time}</span></td><td style={S.td}>{l.topic}</td><td style={{...S.td,fontSize:12,color:"#6b7280"}}>{l.homework||"—"}</td><td style={S.td}><ModeBadge mode={l.mode} zoom={l.zoom_account}/></td><td style={S.td}><Pill ok={l.present}/></td></tr>)}</tbody>
     </table></div>
+    {Array.isArray(student.package_history)&&student.package_history.length>0&&(
+      <div style={{marginTop:16}}>
+        <div style={{fontWeight:700,fontSize:13,marginBottom:8,color:"#374151"}}>📦 Storico pacchetti</div>
+        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          {[...student.package_history].reverse().map((h,i)=>(
+            <div key={i} style={{background:"#f8fafc",borderRadius:8,padding:"8px 14px",fontSize:12,display:"flex",gap:16,alignItems:"center"}}>
+              <span style={{color:"#9ca3af"}}>📅 {fmtDate(h.date)}</span>
+              <span style={{fontWeight:600}}>{h.used}/{h.total} lezioni usate</span>
+              <span style={{color:h.remaining<=0?"#ef4444":"#10b981",fontWeight:600}}>{h.remaining} rimaste</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    )}
     <div style={{marginTop:16,textAlign:"right"}}><button style={S.btnSecondary} onClick={onClose}>Chiudi</button></div>
   </Overlay>);
 }
@@ -616,9 +638,9 @@ function ModeFields({form,set}) {
 
 // ── LEZIONI INDIVIDUALI — identica all'originale ──────────────────
 function LessonsPage({user,students,lessons,teachers,isAdmin,onAdd,onAddRecurring,onUpdate,onDelete}) {
-  const [modal,setModal]=useState(null);const [fS,setFS]=useState("");const [fM,setFM]=useState("");const [fY,setFY]=useState("");const [fD,setFD]=useState("");const [fT,setFT]=useState("");const [confirm,setConfirm]=useState(null);const [detailSt,setDetailSt]=useState(null);const [viewMode,setViewMode]=useState("day");
+  const [modal,setModal]=useState(null);const [fS,setFS]=useState("");const [fM,setFM]=useState("");const [fY,setFY]=useState("");const [fD,setFD]=useState("");const [fT,setFT]=useState("");const [confirm,setConfirm]=useState(null);const [openDays,setOpenDays]=useState({});const toggleDay=d=>setOpenDays(p=>({...p,[d]:!p[d]}));const isDayOpen=d=>openDays[d]!==false;const [detailSt,setDetailSt]=useState(null);const [viewMode,setViewMode]=useState("day");
   const myL=isAdmin?lessons:lessons.filter(l=>l.teacher_id===user.id);
-  const filtered=myL.filter(l=>(!fS||l.student_id===fS)&&(!fT||l.teacher_id===fT)&&(!fY||l.date.startsWith(fY))&&(!fM||l.date.slice(0,7)===fM)&&(!fD||l.date===fD));
+  const filtered=myL.filter(l=>l.date>=today()&&(!fS||l.student_id===fS)&&(!fT||l.teacher_id===fT)&&(!fY||l.date.startsWith(fY))&&(!fM||l.date.slice(0,7)===fM)&&(!fD||l.date===fD));
   const sorted=[...filtered].sort((a,b)=>a.date.localeCompare(b.date)||(a.time||"").localeCompare(b.time||""));
   const years=[...new Set(myL.map(l=>l.date.slice(0,4)))].sort().reverse();
   const months=[...new Set(myL.map(l=>l.date.slice(0,7)))].sort().reverse();
@@ -645,11 +667,12 @@ function LessonsPage({user,students,lessons,teachers,isAdmin,onAdd,onAddRecurrin
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
           {byDay.map(([date,dayLessons])=>(
             <div key={date} style={{background:"white",borderRadius:16,border:"1px solid #f1f5f9",overflow:"hidden",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
-              <div style={{background:"#f8fafc",padding:"10px 18px",borderBottom:"1px solid #f1f5f9",display:"flex",alignItems:"center",gap:10}}>
+              <div onClick={()=>toggleDay(date)} style={{background:"#f8fafc",padding:"10px 18px",borderBottom:"1px solid #f1f5f9",display:"flex",alignItems:"center",gap:10,cursor:"pointer",userSelect:"none"}}>
+                <span style={{fontSize:13,color:"#9ca3af",marginRight:4}}>{isDayOpen(date)?"▼":"▶"}</span>
                 <span style={{fontWeight:700,fontSize:14,color:"#374151"}}>{new Date(date+"T00:00:00").toLocaleDateString("it-IT",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</span>
                 <span style={{marginLeft:"auto",fontSize:12,background:"#e0e7ff",color:"#4f46e5",borderRadius:20,padding:"2px 10px",fontWeight:600}}>{dayLessons.length} lezioni</span>
               </div>
-              <div style={{padding:"8px 0"}}>
+              {isDayOpen(date)&&<div style={{padding:"8px 0"}}>
                 {[...dayLessons].sort((a,b)=>(a.time||"").localeCompare(b.time||"")).map(l=>{
                   const st=students.find(s=>s.id===l.student_id);if(!st)return null;
                   const t=teachers.find(x=>x.id===l.teacher_id);
@@ -666,7 +689,7 @@ function LessonsPage({user,students,lessons,teachers,isAdmin,onAdd,onAddRecurrin
                     <div style={{display:"flex",gap:4}}><button style={S.iconBtn} onClick={()=>setModal(l)}>✏️</button><button style={S.iconBtn} onClick={()=>setConfirm({id:l.id,sid:l.student_id})}>🗑️</button></div>
                   </div>);
                 })}
-              </div>
+              </div>}
             </div>
           ))}
         </div>
@@ -712,6 +735,8 @@ function ClassesPage({user,students,classes,classLessons,teachers,isAdmin,onAddC
   const visibleClasses=classes.filter(c=>(!fCompany||c.company===fCompany)&&(!fTeacher||c.teacher_id===fTeacher)&&(!fClass||c.id===fClass));
   const classStudents=activeClass?students.filter(s=>(activeClass.student_ids||[]).includes(s.id)):[];
   const thisLessons=activeClass?[...classLessons.filter(l=>l.class_id===activeClass.id)].sort((a,b)=>a.date.localeCompare(b.date)):[];
+  const futureClassLessons=thisLessons.filter(l=>l.date>=today());
+  const [openClassDays,setOpenClassDays]=useState({});const toggleClassDay=d=>setOpenClassDays(p=>({...p,[d]:!p[d]}));const isClassDayOpen=d=>openClassDays[d]!==false;
   return (<div style={S.page}>
     {!sel?(<>
       <div style={S.pageHeader}><div><h1 style={S.pageTitle}>Lezioni di Classe</h1><p style={S.pageSub}>{classes.length} classi</p></div>{isAdmin&&<button style={{...S.btnPrimary,width:"auto"}} onClick={()=>setCM("add")}>+ Nuova Classe</button>}</div>
@@ -742,26 +767,38 @@ function ClassesPage({user,students,classes,classLessons,teachers,isAdmin,onAddC
           {classStudents.map(st=>(<div key={st.id} style={{background:"white",borderRadius:12,padding:"12px 16px",border:"1px solid #f1f5f9",display:"flex",alignItems:"center",gap:10,marginBottom:8}}><div style={{...S.studentAvatar,width:34,height:34,fontSize:12}}>{st.name.split(" ").map(n=>n[0]).join("").slice(0,2)}</div><div style={{flex:1}}><div style={{fontWeight:600,fontSize:14}}>{st.name}</div></div><LevelBadge level={st.level}/></div>))}
         </div>
         <div><h2 style={S.sectionTitle}>Registro ({thisLessons.length}/{activeClass?.package_total})</h2>
-          {thisLessons.length===0?<Empty text="Nessuna lezione"/>:(<div style={{display:"flex",flexDirection:"column",gap:12}}>
-            {[...thisLessons].reverse().map((lesson,ri)=>{
-              const idx=thisLessons.length-ri;const tot=activeClass?.package_total||0;const att=Object.values(lesson.attendances||{}).filter(Boolean).length;
-              return(<div key={lesson.id} style={{background:"white",borderRadius:14,padding:18,border:"1px solid #f1f5f9",boxShadow:"0 1px 3px rgba(0,0,0,0.05)"}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
-                  <div style={{display:"flex",alignItems:"center",gap:10}}><LessonCounter current={idx} total={tot}/>
-                    <div><div style={{fontWeight:700,fontSize:15}}>{lesson.topic}</div>
-                      <div style={{fontSize:12,color:"#6b7280",marginTop:2,display:"flex",alignItems:"center",gap:8}}>{fmtDate(lesson.date)} · <span style={S.timeBadge}>{lesson.time}</span> · {lesson.duration}min · <ModeBadge mode={lesson.mode} zoom={lesson.zoom_account}/></div>
-                      {lesson.homework&&<div style={{fontSize:12,color:"#6b7280",marginTop:2}}>📝 {lesson.homework}</div>}
-                    </div>
+          {futureClassLessons.length===0?<Empty text="Nessuna lezione futura"/>:(()=>{
+            const byDay={};futureClassLessons.forEach(l=>{if(!byDay[l.date])byDay[l.date]=[];byDay[l.date].push(l);});
+            return(<div style={{display:"flex",flexDirection:"column",gap:12}}>
+              {Object.entries(byDay).sort((a,b)=>a[0].localeCompare(b[0])).map(([date,dayLessons])=>(
+                <div key={date} style={{background:"white",borderRadius:14,border:"1px solid #f1f5f9",overflow:"hidden",boxShadow:"0 1px 3px rgba(0,0,0,0.05)"}}>
+                  <div onClick={()=>toggleClassDay(date)} style={{background:"#f8fafc",padding:"10px 18px",display:"flex",alignItems:"center",gap:10,cursor:"pointer",userSelect:"none"}}>
+                    <span style={{fontSize:13,color:"#9ca3af",marginRight:4}}>{isClassDayOpen(date)?"▼":"▶"}</span>
+                    <span style={{fontWeight:700,fontSize:14,color:"#374151"}}>{new Date(date+"T00:00:00").toLocaleDateString("it-IT",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</span>
+                    <span style={{marginLeft:"auto",fontSize:12,background:"#fef3c7",color:"#d97706",borderRadius:20,padding:"2px 10px",fontWeight:600}}>{dayLessons.length} lezioni</span>
                   </div>
-                  <div style={{display:"flex",gap:6}}><button style={S.iconBtn} onClick={()=>setLM(lesson)}>✏️</button><button style={S.iconBtn} onClick={()=>setConfirm({type:"classLesson",id:lesson.id,cid:lesson.class_id})}>🗑️</button></div>
+                  {isClassDayOpen(date)&&dayLessons.map((lesson)=>{
+                    const idx=thisLessons.findIndex(x=>x.id===lesson.id)+1;const tot=activeClass?.package_total||0;const att=Object.values(lesson.attendances||{}).filter(Boolean).length;
+                    return(<div key={lesson.id} style={{padding:18,borderTop:"1px solid #f1f5f9"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
+                        <div style={{display:"flex",alignItems:"center",gap:10}}><LessonCounter current={idx} total={tot}/>
+                          <div><div style={{fontWeight:700,fontSize:15}}>{lesson.topic||"—"}</div>
+                            <div style={{fontSize:12,color:"#6b7280",marginTop:2,display:"flex",alignItems:"center",gap:8}}><span style={S.timeBadge}>{lesson.time}</span> · {lesson.duration}min · <ModeBadge mode={lesson.mode} zoom={lesson.zoom_account}/></div>
+                            {lesson.homework&&<div style={{fontSize:12,color:"#6b7280",marginTop:2}}>📝 {lesson.homework}</div>}
+                          </div>
+                        </div>
+                        <div style={{display:"flex",gap:6}}><button style={S.iconBtn} onClick={()=>setLM(lesson)}>✏️</button><button style={S.iconBtn} onClick={()=>setConfirm({type:"classLesson",id:lesson.id,cid:lesson.class_id})}>🗑️</button></div>
+                      </div>
+                      <div style={{borderTop:"1px solid #f1f5f9",paddingTop:8}}>
+                        <div style={{fontSize:11,fontWeight:600,color:"#9ca3af",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.05em"}}>Presenze: {att}/{classStudents.length}</div>
+                        <div style={{display:"flex",flexWrap:"wrap",gap:5}}>{classStudents.map(st=>{const p=lesson.attendances?.[st.id]??false;return<span key={st.id} style={{padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:600,background:p?"#d1fae5":"#fee2e2",color:p?"#065f46":"#991b1b"}}>{p?"✓":"✗"} {st.name.split(" ")[0]}</span>;})}</div>
+                      </div>
+                    </div>);
+                  })}
                 </div>
-                <div style={{borderTop:"1px solid #f1f5f9",paddingTop:8}}>
-                  <div style={{fontSize:11,fontWeight:600,color:"#9ca3af",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.05em"}}>Presenze: {att}/{classStudents.length}</div>
-                  <div style={{display:"flex",flexWrap:"wrap",gap:5}}>{classStudents.map(st=>{const p=lesson.attendances?.[st.id]??false;return<span key={st.id} style={{padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:600,background:p?"#d1fae5":"#fee2e2",color:p?"#065f46":"#991b1b"}}>{p?"✓":"✗"} {st.name.split(" ")[0]}</span>;})}</div>
-                </div>
-              </div>);
-            })}
-          </div>)}
+              ))}
+            </div>);
+          })()}
         </div>
       </div>
     </>)}
