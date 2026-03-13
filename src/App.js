@@ -526,7 +526,7 @@ function StudentModal({user,teachers,student,onSave,onClose}) {
 }
 
 function StudentDetailModal({student,lessons,onClose}) {
-  const sorted=[...lessons].sort((a,b)=>a.date.localeCompare(b.date));
+  const sorted=[...lessons].sort((a,b)=>b.date.localeCompare(a.date));
   return (<Overlay onClose={onClose} wide>
     <h2 style={S.modalTitle}>Scheda: {student.name}</h2>
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>{[["Livello",`Livello ${student.level}`],["Telefono",student.phone||"—"],["Email",student.email||"—"],["Azienda",student.company||"—"],["Note",student.notes||"—"]].map(([k,v])=>(<div key={k} style={{background:"#f9fafb",borderRadius:8,padding:"10px 14px"}}><div style={{fontSize:11,color:"#9ca3af",marginBottom:2}}>{k}</div><div style={{fontSize:13,fontWeight:600,wordBreak:"break-all"}}>{v}</div></div>))}</div>
@@ -1227,17 +1227,17 @@ const CSS=`
   @keyframes loadbar{0%{transform:translateX(-100%)}100%{transform:translateX(400%)}}
 `;
 const S={
-  app:{display:"flex",minHeight:"100vh",background:"#f8fafc",fontFamily:"'DM Sans',system-ui,sans-serif"},
-  main:{flex:1,overflowY:"auto",minHeight:"100vh"},
+  app:{display:"flex",height:"100vh",overflow:"hidden",background:"#f8fafc",fontFamily:"'DM Sans',system-ui,sans-serif"},
+  main:{flex:1,overflowY:"auto",height:"100vh"},
   loadingBar:{position:"fixed",top:0,left:0,right:0,height:3,zIndex:9998,background:"#e2e8f0",overflow:"hidden"},
   loadingBarFill:{height:"100%",width:"30%",background:"linear-gradient(90deg,#6366f1,#818cf8)",animation:"loadbar 1s ease infinite"},
   loginBg:{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",background:"linear-gradient(135deg,#0f172a 0%,#1e293b 50%,#0f172a 100%)",padding:20},
   loginCard:{background:"white",borderRadius:20,padding:"48px 40px",width:"100%",maxWidth:400,boxShadow:"0 25px 60px rgba(0,0,0,0.3)"},
   loginLogo:{fontSize:48,textAlign:"center",marginBottom:8},loginTitle:{textAlign:"center",fontSize:26,fontWeight:800,color:"#0f172a",margin:"0 0 4px"},loginSub:{textAlign:"center",color:"#6b7280",fontSize:14,marginBottom:32},
-  sidebar:{width:240,background:"#0f172a",display:"flex",flexDirection:"column",minHeight:"100vh",position:"sticky",top:0,flexShrink:0},
+  sidebar:{width:240,background:"#0f172a",display:"flex",flexDirection:"column",height:"100vh",position:"sticky",top:0,flexShrink:0,overflow:"hidden"},
   sidebarTop:{padding:"28px 20px 20px",borderBottom:"1px solid #1e293b",display:"flex",alignItems:"center",gap:10},
   sidebarLogo:{fontSize:28},sidebarBrand:{color:"white",fontWeight:700,fontSize:15},
-  nav:{flex:1,padding:"16px 12px",display:"flex",flexDirection:"column",gap:2},
+  nav:{flex:1,padding:"16px 12px",display:"flex",flexDirection:"column",gap:2,overflowY:"auto"},
   navItem:{display:"flex",alignItems:"center",gap:10,padding:"9px 14px",borderRadius:10,background:"transparent",border:"none",color:"#94a3b8",cursor:"pointer",fontSize:13,fontWeight:500,textAlign:"left",transition:"all 0.15s"},
   navItemActive:{background:"#1e293b",color:"white"},navIcon:{fontSize:16,width:22,textAlign:"center"},
   badge:{marginLeft:"auto",background:"#8b5cf6",color:"white",borderRadius:20,fontSize:11,padding:"2px 8px",fontWeight:700},
