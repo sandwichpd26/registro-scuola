@@ -130,7 +130,7 @@ export default function App() {
   const [themeKey,setThemeKey]=useState(()=>currentUser?.theme||"indigo");
   const th=THEMES[themeKey]||THEMES.indigo;
   const changeTheme=async(key)=>{setThemeKey(key);try{await db.upsertTeacher({id:currentUser.id,theme:key});}catch(e){}};
-  useEffect(()=>{if(currentUser?.theme&&THEMES[currentUser.theme])setThemeKey(currentUser.theme);},[currentUser?.id]);
+  useEffect(()=>{if(currentUser?.theme&&THEMES[currentUser.theme])setThemeKey(currentUser.theme);},[currentUser?.id,currentUser?.theme]);
   const myClasses        = currentUser?(isAdmin?classes:classes.filter(c=>c.teacher_id===currentUser.id)):[];
 
   // ── CRUD — ogni operazione aggiorna lo state ottimisticamente
