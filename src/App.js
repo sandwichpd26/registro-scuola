@@ -312,17 +312,18 @@ export default function App() {
   );
 
   const myClassLessons = isAdmin?classLessons:classLessons.filter(l=>l.teacher_id===currentUser.id);
+  const myLessons = isAdmin?lessons:lessons.filter(l=>l.teacher_id===currentUser.id);
   const alertCount = [...activeStudents,...myClasses].filter(x=>pkgRemaining(x)<=3&&x.package_total>0).length;
   const myNotes = notes.filter(n=>n.user_id===currentUser.id);
 
   const pages = {
     home:     <HomePage     user={currentUser} students={myStudents} lessons={lessons} classLessons={classLessons} classes={myClasses} teachers={teachers} setPage={setPage} isAdmin={isAdmin} seenHomework={seenHomework} setSeenHomework={setSeenHomework} reviewHomework={reviewHomework} setReviewHomework={setReviewHomework}/>,
     students: <StudentsPage user={currentUser} students={allActiveStudents} classes={myClasses} teachers={teachers} lessons={lessons} classLessons={classLessons} isAdmin={isAdmin} onAdd={addStudent} onUpdate={updateStudent} onArchive={archiveStudent} onTrash={trashStudent}/>,
-    lessons:  <LessonsPage  user={currentUser} students={activeStudents} lessons={lessons} teachers={teachers} isAdmin={isAdmin} onAdd={addLesson} onAddRecurring={addRecurringLessons} onUpdate={updateLesson} onDelete={deleteLesson}/>,
+    lessons:  <LessonsPage  user={currentUser} students={activeStudents} lessons={myLessons} teachers={teachers} isAdmin={isAdmin} onAdd={addLesson} onAddRecurring={addRecurringLessons} onUpdate={updateLesson} onDelete={deleteLesson}/>,
     classes:  <ClassesPage  user={currentUser} students={allActiveStudents} classes={myClasses} classLessons={myClassLessons} teachers={teachers} isAdmin={isAdmin} onAddClass={addClass} onUpdateClass={updateClass} onDeleteClass={deleteClass} onAddClassLesson={addClassLesson} onUpdateClassLesson={updateClassLesson} onDeleteClassLesson={deleteClassLesson}/>,
-    calendar: <CalendarPage user={currentUser} students={myStudents} lessons={lessons} classLessons={classLessons} classes={myClasses} teachers={teachers} isAdmin={isAdmin} notes={myNotes} onAddNote={addNote} onUpdateNote={updateNote} onDeleteNote={deleteNote} onImportLesson={addLessonAsAdmin} allStudents={students} allTeachers={teachers}/>,
-    reports:  <ReportsPage  user={currentUser} students={isAdmin?students:activeStudents} classes={myClasses} lessons={lessons} classLessons={classLessons} teachers={teachers} isAdmin={isAdmin}/>,
-    report_s: <StudentReportPage user={currentUser} students={myStudents.filter(s=>s.active&&!s.deleted)} lessons={lessons} isAdmin={isAdmin}/>,
+    calendar: <CalendarPage user={currentUser} students={myStudents} lessons={myLessons} classLessons={myClassLessons} classes={myClasses} teachers={teachers} isAdmin={isAdmin} notes={myNotes} onAddNote={addNote} onUpdateNote={updateNote} onDeleteNote={deleteNote} onImportLesson={addLessonAsAdmin} allStudents={students} allTeachers={teachers}/>,
+    reports:  <ReportsPage  user={currentUser} students={isAdmin?students:activeStudents} classes={myClasses} lessons={myLessons} classLessons={myClassLessons} teachers={teachers} isAdmin={isAdmin}/>,
+    report_s: <StudentReportPage user={currentUser} students={myStudents.filter(s=>s.active&&!s.deleted)} lessons={myLessons} isAdmin={isAdmin}/>,
     archive:  isAdmin?<ArchivePage students={archivedStudents} teachers={teachers} lessons={lessons} onRestore={restoreStudent} onTrash={trashStudent}/>:null,
     trash:    isAdmin?<TrashPage students={trashedStudents} onRestore={restoreFromTrash} onDeleteForever={deleteForever}/>:null,
     admin:    isAdmin?<AdminPage   teachers={teachers} students={students} lessons={lessons} classLessons={classLessons} onAddTeacher={addTeacher} onDeleteTeacher={delTeacher} onUpdateTeacher={updateTeacher} onReassignStudent={reassignStudent}/>:null,
@@ -673,7 +674,7 @@ function LessonsPage({user,students,lessons,teachers,isAdmin,onAdd,onAddRecurrin
     <div style={S.pageHeader}><div><h1 style={S.pageTitle}>Lezioni Individuali</h1><p style={S.pageSub}>{myL.length} lezioni registrate</p></div>
       <div style={{display:"flex",gap:8,alignItems:"center"}}>
         <div style={{display:"flex",gap:4,background:"#f1f5f9",borderRadius:8,padding:3}}>{[["day","Per giorno"],["table","Tabella"]].map(([v,l])=><button key={v} onClick={()=>setViewMode(v)} style={{padding:"5px 12px",borderRadius:6,border:"none",cursor:"pointer",fontWeight:600,fontSize:12,background:viewMode===v?"white":"transparent",color:viewMode===v?"#374151":"#9ca3af",boxShadow:viewMode===v?"0 1px 3px rgba(0,0,0,0.1)":"none"}}>{l}</button>)}</div>
-        <button style={{...S.btnPrimary,width:"auto"}} onClick={()=>setModal("add")}>+ Nuova Lezione</button>
+        {isAdmin&&<button style={{...S.btnPrimary,width:"auto"}} onClick={()=>setModal("add")}>+ Nuova Lezione</button>}
       </div>
     </div>
     <div style={{display:"flex",gap:10,marginBottom:20,flexWrap:"wrap",alignItems:"center"}}>
@@ -708,7 +709,7 @@ function LessonsPage({user,students,lessons,teachers,isAdmin,onAdd,onAddRecurrin
                     <Pill ok={l.present}/>
                     <LessonCounter current={lIdx(l)} total={st.package_total||0}/>
                     <button style={{...S.btnSm,padding:"3px 10px",fontSize:11}} onClick={()=>setDetailSt({student:st,lesson:l})}>Dettagli</button>
-                    <div style={{display:"flex",gap:4}}><button style={S.iconBtn} onClick={()=>setModal(l)}>✏️</button><button style={S.iconBtn} onClick={()=>setConfirm({id:l.id,sid:l.student_id})}>🗑️</button></div>
+                    {isAdmin&&<div style={{display:"flex",gap:4}}><button style={S.iconBtn} onClick={()=>setModal(l)}>✏️</button><button style={S.iconBtn} onClick={()=>setConfirm({id:l.id,sid:l.student_id})}>🗑️</button></div>}
                   </div>);
                 })}
               </div>}
@@ -718,7 +719,7 @@ function LessonsPage({user,students,lessons,teachers,isAdmin,onAdd,onAddRecurrin
       ):(
         <div style={S.tableWrap}><table style={S.table}>
           <thead><tr><th style={S.th}>N°</th><th style={S.th}>Data</th><th style={S.th}>Ora</th><th style={S.th}>Min</th><th style={S.th}>Studente</th><th style={S.th}>Argomento</th><th style={S.th}>Compiti</th><th style={S.th}>Modalità</th><th style={S.th}>Presenza</th><th style={S.th}></th></tr></thead>
-          <tbody>{sorted.map(l=>{const st=students.find(s=>s.id===l.student_id);if(!st)return null;return(<tr key={l.id} style={S.tr}><td style={S.td}><LessonCounter current={lIdx(l)} total={st.package_total||0}/></td><td style={S.td}>{fmtDate(l.date)}</td><td style={S.td}><span style={S.timeBadge}>{l.time||"—"}</span></td><td style={S.td}><span style={{fontSize:12,color:"#6b7280"}}>{l.duration}m</span></td><td style={S.td}><strong>{st.name}</strong></td><td style={{...S.td,maxWidth:150,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.topic}</td><td style={{...S.td,maxWidth:120,color:"#6b7280",fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.homework||"—"}</td><td style={S.td}><ModeBadge mode={l.mode} zoom={l.zoom_account}/></td><td style={S.td}><Pill ok={l.present}/></td><td style={S.td}><div style={{display:"flex",gap:4}}><button style={S.iconBtn} onClick={()=>setModal(l)}>✏️</button><button style={S.iconBtn} onClick={()=>setConfirm({id:l.id,sid:l.student_id})}>🗑️</button></div></td></tr>);})}</tbody>
+          <tbody>{sorted.map(l=>{const st=students.find(s=>s.id===l.student_id);if(!st)return null;return(<tr key={l.id} style={S.tr}><td style={S.td}><LessonCounter current={lIdx(l)} total={st.package_total||0}/></td><td style={S.td}>{fmtDate(l.date)}</td><td style={S.td}><span style={S.timeBadge}>{l.time||"—"}</span></td><td style={S.td}><span style={{fontSize:12,color:"#6b7280"}}>{l.duration}m</span></td><td style={S.td}><strong>{st.name}</strong></td><td style={{...S.td,maxWidth:150,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.topic}</td><td style={{...S.td,maxWidth:120,color:"#6b7280",fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.homework||"—"}</td><td style={S.td}><ModeBadge mode={l.mode} zoom={l.zoom_account}/></td><td style={S.td}><Pill ok={l.present}/></td>{isAdmin&&<td style={S.td}><div style={{display:"flex",gap:4}}><button style={S.iconBtn} onClick={()=>setModal(l)}>✏️</button><button style={S.iconBtn} onClick={()=>setConfirm({id:l.id,sid:l.student_id})}>🗑️</button></div></td>}</tr>);})}</tbody>
         </table></div>
       )
     )}
@@ -1067,12 +1068,13 @@ function ReportsPage({user,students,classes,lessons,classLessons,teachers,isAdmi
   const allObjs=[...students.filter(s=>s.active),...classes];
   const monthlyHours=useMemo(()=>{
     const now=new Date();const ym=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
-    return teachers.filter(t=>t.role==="teacher").map(t=>{
+    const teacherList=isAdmin?teachers.filter(t=>t.role==="teacher"):teachers.filter(t=>t.id===user.id);
+    return teacherList.map(t=>{
       const im=lessons.filter(l=>l.teacher_id===t.id&&l.date.startsWith(ym)).reduce((s,l)=>s+(l.duration||0),0);
       const cm=classLessons.filter(l=>l.teacher_id===t.id&&l.date.startsWith(ym)).reduce((s,l)=>s+(l.duration||0),0);
       const total=im+cm;return{teacher:t,mins:total,hours:Math.floor(total/60),rem:total%60};
     });
-  },[teachers,lessons,classLessons]);
+  },[teachers,lessons,classLessons,isAdmin,user]);
   return (<div style={S.page}>
     <div style={S.pageHeader}><div><h1 style={S.pageTitle}>📊 Report & Statistiche</h1><p style={S.pageSub}>Monitoraggio pacchetti, ore e lezioni</p></div></div>
     <div style={S.statsGrid}>{[{label:"Studenti attivi",value:students.filter(s=>s.active).length,icon:"👤",color:"#6366f1"},{label:"Pacchetti in scadenza",value:allObjs.filter(x=>pkgRemaining(x)<=3&&pkgRemaining(x)>0).length,icon:"⚠️",color:"#f59e0b"},{label:"Pacchetti esauriti",value:allObjs.filter(x=>pkgRemaining(x)<=0&&x.package_total>0).length,icon:"🔴",color:"#ef4444"},{label:"Lezioni totali",value:lessons.length+classLessons.length,icon:"📚",color:"#10b981"}].map((s,i)=>(<div key={i} style={S.statCard}><div style={{...S.statIcon,background:s.color+"20",color:s.color}}>{s.icon}</div><div style={S.statValue}>{s.value}</div><div style={S.statLabel}>{s.label}</div></div>))}</div>
