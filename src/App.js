@@ -127,9 +127,10 @@ export default function App() {
   const [profileModal,setProfileModal]=useState(false);
   const [seenHomework,setSeenHomework]=useState(()=>{try{return JSON.parse(localStorage.getItem("seen_homework")||"[]");}catch{return[];}});
   const [reviewHomework,setReviewHomework]=useState(()=>{try{return JSON.parse(localStorage.getItem("review_homework")||"[]");}catch{return[];}});
-  const [themeKey,setThemeKey]=useState(()=>localStorage.getItem("app_theme")||"indigo");
+  const [themeKey,setThemeKey]=useState(()=>currentUser?.theme||"indigo");
   const th=THEMES[themeKey]||THEMES.indigo;
-  const changeTheme=(key)=>{setThemeKey(key);localStorage.setItem("app_theme",key);};
+  const changeTheme=async(key)=>{setThemeKey(key);try{await db.upsertTeacher({id:currentUser.id,theme:key});}catch(e){}};
+  useEffect(()=>{if(currentUser?.theme&&THEMES[currentUser.theme])setThemeKey(currentUser.theme);},[currentUser?.id]);
   const myClasses        = currentUser?(isAdmin?classes:classes.filter(c=>c.teacher_id===currentUser.id)):[];
 
   // ── CRUD — ogni operazione aggiorna lo state ottimisticamente
