@@ -671,7 +671,7 @@ function LessonsPage({user,students,lessons,teachers,isAdmin,onAdd,onAddRecurrin
   const sorted=[...filtered].sort((a,b)=>a.date.localeCompare(b.date)||(a.time||"").localeCompare(b.time||""));
   const years=[...new Set(myL.map(l=>l.date.slice(0,4)))].sort().reverse();
   const months=[...new Set(myL.map(l=>l.date.slice(0,7)))].sort().reverse();
-  const lIdx=l=>{const st=students.find(s=>s.id===l.student_id);return st?.package_used||0;};
+  const lIdx=l=>{const all=lessons.filter(x=>x.student_id===l.student_id).sort((a,b)=>a.date.localeCompare(b.date)||(a.time||"").localeCompare(b.time||""));return all.findIndex(x=>x.id===l.id)+1;};
   // Raggruppa per giorno
   const byDay=useMemo(()=>{const map={};sorted.forEach(l=>{if(!map[l.date])map[l.date]=[];map[l.date].push(l);});return Object.entries(map).sort((a,b)=>a[0].localeCompare(b[0]));},[ sorted ]);
   return (<div style={S.page}>
@@ -703,7 +703,8 @@ function LessonsPage({user,students,lessons,teachers,isAdmin,onAdd,onAddRecurrin
                 {[...dayLessons].sort((a,b)=>(a.time||"").localeCompare(b.time||"")).map(l=>{
                   const st=students.find(s=>s.id===l.student_id);if(!st)return null;
                   const t=teachers.find(x=>x.id===l.teacher_id);
-                  return(<div key={l.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 18px",borderBottom:"1px solid #f8fafc"}}>
+                  const isPast=l.date<today();
+                  return(<div key={l.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 18px",borderBottom:"1px solid #f8fafc",opacity:isPast?0.45:1}}>
                     <span style={S.timeBadge}>{l.time||"—"}</span>
                     <span style={{fontSize:12,color:"#9ca3af",minWidth:32}}>{l.duration}m</span>
                     <strong style={{fontSize:13,flex:"0 0 auto",minWidth:100}}>{st.name}</strong>
@@ -723,7 +724,7 @@ function LessonsPage({user,students,lessons,teachers,isAdmin,onAdd,onAddRecurrin
       ):(
         <div style={S.tableWrap}><table style={S.table}>
           <thead><tr><th style={S.th}>N°</th><th style={S.th}>Data</th><th style={S.th}>Ora</th><th style={S.th}>Min</th><th style={S.th}>Studente</th><th style={S.th}>Argomento</th><th style={S.th}>Compiti</th><th style={S.th}>Modalità</th><th style={S.th}>Presenza</th><th style={S.th}></th></tr></thead>
-          <tbody>{sorted.map(l=>{const st=students.find(s=>s.id===l.student_id);if(!st)return null;return(<tr key={l.id} style={S.tr}><td style={S.td}><LessonCounter current={lIdx(l)} total={st.package_total||0}/></td><td style={S.td}>{fmtDate(l.date)}</td><td style={S.td}><span style={S.timeBadge}>{l.time||"—"}</span></td><td style={S.td}><span style={{fontSize:12,color:"#6b7280"}}>{l.duration}m</span></td><td style={S.td}><strong>{st.name}</strong></td><td style={{...S.td,maxWidth:150,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.topic}</td><td style={{...S.td,maxWidth:120,color:"#6b7280",fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.homework||"—"}</td><td style={S.td}><ModeBadge mode={l.mode} zoom={l.zoom_account}/></td><td style={S.td}><Pill ok={l.present}/></td><td style={S.td}><div style={{display:"flex",gap:4}}><button style={S.iconBtn} onClick={()=>setModal(l)}>✏️</button><button style={S.iconBtn} onClick={()=>setConfirm({id:l.id,sid:l.student_id})}>🗑️</button></div></td></tr>);})}</tbody>
+          <tbody>{sorted.map(l=>{const st=students.find(s=>s.id===l.student_id);if(!st)return null;const isPast=l.date<today();return(<tr key={l.id} style={{...S.tr,opacity:isPast?0.45:1}}><td style={S.td}><LessonCounter current={lIdx(l)} total={st.package_total||0}/></td><td style={S.td}>{fmtDate(l.date)}</td><td style={S.td}><span style={S.timeBadge}>{l.time||"—"}</span></td><td style={S.td}><span style={{fontSize:12,color:"#6b7280"}}>{l.duration}m</span></td><td style={S.td}><strong>{st.name}</strong></td><td style={{...S.td,maxWidth:150,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.topic}</td><td style={{...S.td,maxWidth:120,color:"#6b7280",fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.homework||"—"}</td><td style={S.td}><ModeBadge mode={l.mode} zoom={l.zoom_account}/></td><td style={S.td}><Pill ok={l.present}/></td><td style={S.td}><div style={{display:"flex",gap:4}}><button style={S.iconBtn} onClick={()=>setModal(l)}>✏️</button><button style={S.iconBtn} onClick={()=>setConfirm({id:l.id,sid:l.student_id})}>🗑️</button></div></td></tr>);})}</tbody>
         </table></div>
       )
     )}
