@@ -106,7 +106,7 @@ export default function App() {
         db.getClassLessons(),
         db.getNotes(user.id),
       ]);
-      const recalcStudents=st;
+      const recalcStudents=st.map(s=>({...s,package_used:(s.package_used||0)+les.filter(l=>l.student_id===s.id).length}));
       const recalcClasses=cl.map(c=>({...c,package_used:cll.filter(l=>l.class_id===c.id).length}));
       setStudents(recalcStudents); setLessons(les); setClasses(recalcClasses);
       setClassLessons(cll); setNotes(nt);
@@ -670,7 +670,7 @@ function LessonsPage({user,students,lessons,teachers,isAdmin,onAdd,onAddRecurrin
   const sorted=[...filtered].sort((a,b)=>a.date.localeCompare(b.date)||(a.time||"").localeCompare(b.time||""));
   const years=[...new Set(myL.map(l=>l.date.slice(0,4)))].sort().reverse();
   const months=[...new Set(myL.map(l=>l.date.slice(0,7)))].sort().reverse();
-  const lIdx=l=>{const st=students.find(s=>s.id===l.student_id);const all=lessons.filter(x=>x.student_id===l.student_id).sort((a,b)=>a.date.localeCompare(b.date)||(a.time||"").localeCompare(b.time||""));const pos=all.findIndex(x=>x.id===l.id)+1;const offset=(st?.package_used||0)-all.length;return offset+pos;};
+  const lIdx=l=>{const st=students.find(s=>s.id===l.student_id);const all=lessons.filter(x=>x.student_id===l.student_id).sort((a,b)=>a.date.localeCompare(b.date)||(a.time||"").localeCompare(b.time||""));const pos=all.findIndex(x=>x.id===l.id)+1;const offset=(st?.package_used||0)-all.length;return Math.max(1,offset+pos);};
   // Raggruppa per giorno
   const byDay=useMemo(()=>{const map={};sorted.forEach(l=>{if(!map[l.date])map[l.date]=[];map[l.date].push(l);});return Object.entries(map).sort((a,b)=>a[0].localeCompare(b[0]));},[ sorted ]);
   return (<div style={S.page}>
