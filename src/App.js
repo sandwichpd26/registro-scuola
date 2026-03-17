@@ -206,9 +206,8 @@ export default function App() {
     try { await db.updateStudentField(id,{teacher_id:tid}); showToast("Studente riassegnato"); }
     catch(e) { showToast("Errore","err"); }
   };
-  const recalcPackage = (updatedLessons, sid) => {
-    const newUsed = updatedLessons.filter(l=>l.student_id===sid).length;
-    setStudents(p=>p.map(x=>x.id===sid?{...x,package_used:newUsed}:x));
+  const recalcPackage = (diff, sid) => {
+    setStudents(p=>p.map(x=>x.id===sid?{...x,package_used:Math.max(0,(x.package_used||0)+diff)}:x));
   };
 
   const addRecurringLessons = async (baseLesson, times) => {
@@ -220,7 +219,7 @@ export default function App() {
     });
     const updated = [...newLessons, ...lessons];
     setLessons(updated);
-    recalcPackage(updated, baseLesson.student_id);
+    recalcPackage(1, baseLesson.student_id);
     try {
       for(const obj of newLessons) await db.upsertLesson(obj);
       showToast(`${times} lezioni registrate ✓`);
@@ -229,14 +228,14 @@ export default function App() {
   const addLesson = async l => {
     const obj={...l,id:uid(),teacher_id:currentUser.id};
     const updated=[obj,...lessons];
-    setLessons(updated); recalcPackage(updated, l.student_id);
+    setLessons(updated); recalcPackage(1, l.student_id);
     try { await db.upsertLesson(obj); showToast("Lezione registrata ✓"); }
     catch(e) { setLessons(lessons); showToast("Errore salvataggio","err"); }
   };
   const addLessonAsAdmin = async l => {
     const obj={...l,id:uid()};
     const updated=[obj,...lessons];
-    setLessons(updated); recalcPackage(updated, l.student_id);
+    setLessons(updated); recalcPackage(1, l.student_id);
     try { await db.upsertLesson(obj); }
     catch(e) { setLessons(lessons); throw e; }
   };
@@ -248,7 +247,7 @@ export default function App() {
   const deleteLesson = async (id,sid) => {
     const prev=lessons;
     const updated=lessons.filter(l=>l.id!==id);
-    setLessons(updated); recalcPackage(updated, sid);
+    setLessons(updated); recalcPackage(-1, sid);
     try { await db.deleteLesson(id); showToast("Lezione eliminata"); }
     catch(e) { setLessons(prev); showToast("Errore","err"); }
   };
