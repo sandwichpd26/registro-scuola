@@ -106,9 +106,8 @@ export default function App() {
         db.getClassLessons(),
         db.getNotes(user.id),
       ]);
-      const recalcStudents=st.map(s=>({...s,package_used:(s.package_used||0)+les.filter(l=>l.student_id===s.id).length}));
-      const recalcClasses=cl.map(c=>({...c,package_used:cll.filter(l=>l.class_id===c.id).length}));
-      setStudents(recalcStudents); setLessons(les); setClasses(recalcClasses);
+      const recalcStudents=st.map(s=>({...s,pkg_offset:s.package_used||0,package_used:(s.package_used||0)+les.filter(l=>l.student_id===s.id).length}));
+      setStudents(recalcStudents); setLessons(les); setClasses(cl);
       setClassLessons(cll); setNotes(nt);
     } catch(e) {
       showToast("Errore caricamento dati","err");
@@ -129,10 +128,9 @@ export default function App() {
   const [profileModal,setProfileModal]=useState(false);
   const [seenHomework,setSeenHomework]=useState(()=>{try{return JSON.parse(localStorage.getItem("seen_homework")||"[]");}catch{return[];}});
   const [reviewHomework,setReviewHomework]=useState(()=>{try{return JSON.parse(localStorage.getItem("review_homework")||"[]");}catch{return[];}});
-  const [themeKey,setThemeKey]=useState(()=>currentUser?.theme||"indigo");
+  const [themeKey,setThemeKey]=useState(()=>localStorage.getItem("app_theme")||"indigo");
   const th=THEMES[themeKey]||THEMES.indigo;
-  const changeTheme=async(key)=>{setThemeKey(key);try{await db.upsertTeacher({id:currentUser.id,theme:key});}catch(e){}};
-  useEffect(()=>{if(currentUser?.theme&&THEMES[currentUser.theme])setThemeKey(currentUser.theme);},[currentUser?.id,currentUser?.theme]);
+  const changeTheme=(key)=>{setThemeKey(key);localStorage.setItem("app_theme",key);};
   const myClasses        = currentUser?(isAdmin?classes:classes.filter(c=>c.teacher_id===currentUser.id)):[];
 
   // ── CRUD — ogni operazione aggiorna lo state ottimisticamente
@@ -206,38 +204,35 @@ export default function App() {
     try { await db.updateStudentField(id,{teacher_id:tid}); showToast("Studente riassegnato"); }
     catch(e) { showToast("Errore","err"); }
   };
-  const recalcPackage = (diff, sid) => {
-    setStudents(p=>p.map(x=>x.id===sid?{...x,package_used:Math.max(0,(x.package_used||0)+diff)}:x));
+  const bump = (sid,d) => {
+    setStudents(p=>p.map(x=>x.id===sid?{...x,package_used:Math.max(0,(x.package_used||0)+d)}:x));
   };
 
   const addRecurringLessons = async (baseLesson, times) => {
     const groupId = uid();
-    const newLessons = Array.from({length: times}, (_, i) => {
+    const lessons = Array.from({length: times}, (_, i) => {
       const d = new Date(baseLesson.date);
       d.setDate(d.getDate() + i * 7);
       return {...baseLesson, id: uid(), teacher_id: currentUser.id, date: d.toISOString().split("T")[0], recurring_group: groupId};
     });
-    const updated = [...newLessons, ...lessons];
-    setLessons(updated);
-    recalcPackage(1, baseLesson.student_id);
+    setLessons(p=>[...lessons,...p]);
+    lessons.forEach(obj=>bump(obj.student_id,1));
     try {
-      for(const obj of newLessons) await db.upsertLesson(obj);
+      for(const obj of lessons) await db.upsertLesson(obj);
       showToast(`${times} lezioni registrate ✓`);
     } catch(e) { showToast("Errore salvataggio","err"); }
   };
   const addLesson = async l => {
     const obj={...l,id:uid(),teacher_id:currentUser.id};
-    const updated=[obj,...lessons];
-    setLessons(updated); recalcPackage(1, l.student_id);
+    setLessons(p=>[obj,...p]); bump(l.student_id,1);
     try { await db.upsertLesson(obj); showToast("Lezione registrata ✓"); }
-    catch(e) { setLessons(lessons); showToast("Errore salvataggio","err"); }
+    catch(e) { setLessons(p=>p.filter(x=>x.id!==obj.id)); showToast("Errore salvataggio","err"); }
   };
   const addLessonAsAdmin = async l => {
     const obj={...l,id:uid()};
-    const updated=[obj,...lessons];
-    setLessons(updated); recalcPackage(1, l.student_id);
+    setLessons(p=>[obj,...p]); bump(l.student_id,1);
     try { await db.upsertLesson(obj); }
-    catch(e) { setLessons(lessons); throw e; }
+    catch(e) { setLessons(p=>p.filter(x=>x.id!==obj.id)); throw e; }
   };
   const updateLesson = async l => {
     setLessons(p=>p.map(x=>x.id===l.id?l:x));
@@ -246,8 +241,7 @@ export default function App() {
   };
   const deleteLesson = async (id,sid) => {
     const prev=lessons;
-    const updated=lessons.filter(l=>l.id!==id);
-    setLessons(updated); recalcPackage(-1, sid);
+    setLessons(p=>p.filter(l=>l.id!==id)); bump(sid,-1);
     try { await db.deleteLesson(id); showToast("Lezione eliminata"); }
     catch(e) { setLessons(prev); showToast("Errore","err"); }
   };
@@ -417,11 +411,10 @@ function LoginScreen({teachers,onLogin}) {
 // ── SIDEBAR — identica all'originale ─────────────────────────────
 function Sidebar({user,page,setPage,isAdmin,onLogout,onProfile,archivedCount,trashedCount,alertCount,theme,themeKey,onChangeTheme}) {
   const items=[{id:"home",icon:"🏠",label:"Dashboard"},{id:"students",icon:"👤",label:"Studenti & Classi"},{id:"lessons",icon:"📚",label:"Lezioni Individuali"},{id:"classes",icon:"👥",label:"Lezioni di Classe"},{id:"calendar",icon:"📅",label:"Calendario"},{id:"reports",icon:"📊",label:"Report",badge:alertCount>0?`⚠️ ${alertCount}`:null,warn:true},{id:"report_s",icon:"📋",label:"Report Studenti"},...(isAdmin?[{id:"archive",icon:"🗄️",label:"Archivio",badge:archivedCount>0?archivedCount:null},{id:"trash",icon:"🗑️",label:"Cestino",badge:trashedCount>0?trashedCount:null},{id:"admin",icon:"⚙️",label:"Amministrazione"}]:[])];
-  const sb=theme?.sidebar||"#0f172a";const sbBorder=`1px solid rgba(255,255,255,0.08)`;
-  return (<aside style={{...S.sidebar,background:sb}}>
-    <div style={{...S.sidebarTop,borderBottom:sbBorder}}><div style={S.sidebarLogo}>🎓</div><div><div style={S.sidebarBrand}>Sandwich Institute</div><div style={{color:"rgba(255,255,255,0.4)",fontSize:10}}>Registro</div></div></div>
-    <nav style={{...S.nav,background:"transparent"}}>{items.map(item=>(<button key={item.id} className="nav-item" style={{...S.navItem,color:"rgba(255,255,255,0.6)",...(page===item.id?{...S.navItemActive,background:theme?.primary||"#6366f1",color:"white"}:{})}} onClick={()=>setPage(item.id)}><span style={S.navIcon}>{item.icon}</span><span style={{flex:1}}>{item.label}</span>{item.badge&&<span style={{...S.badge,...(item.warn?{background:"rgba(239,68,68,0.2)",color:"#fca5a5"}:{})}}>{item.badge}</span>}</button>))}</nav>
-    <div style={{...S.sidebarBottom,borderTop:sbBorder}}><div style={{...S.userChip,cursor:"pointer"}} onClick={onProfile}><div style={{...S.avatar,background:theme?.primary||"#6366f1"}}>{user.name[0]}</div><div><div style={S.userName}>{user.name}</div><div style={{...S.userRole,color:"rgba(255,255,255,0.4)"}}>{user.role==="admin"?"Amministratore":"Insegnante"}</div></div></div><button style={{...S.logoutBtn,border:`1px solid rgba(255,255,255,0.1)`,color:"rgba(255,255,255,0.5)",marginBottom:4}} onClick={onProfile}>👤 Profilo</button><button style={{...S.logoutBtn,border:`1px solid rgba(255,255,255,0.1)`,color:"rgba(255,255,255,0.5)"}} onClick={onLogout}>Esci →</button></div>
+  return (<aside style={S.sidebar}>
+    <div style={S.sidebarTop}><div style={S.sidebarLogo}>🎓</div><div><div style={S.sidebarBrand}>Sandwich Institute</div><div style={{color:"#475569",fontSize:10}}>Registro</div></div></div>
+    <nav style={{...S.nav,background:theme?.sidebar||"#0f172a"}}>{items.map(item=>(<button key={item.id} className="nav-item" style={{...S.navItem,...(page===item.id?{...S.navItemActive,background:theme?.primary||"#6366f1"}:{})}} onClick={()=>setPage(item.id)}><span style={S.navIcon}>{item.icon}</span><span style={{flex:1}}>{item.label}</span>{item.badge&&<span style={{...S.badge,...(item.warn?{background:"#ef444420",color:"#ef4444"}:{})}}>{item.badge}</span>}</button>))}</nav>
+    <div style={S.sidebarBottom}><div style={{...S.userChip,cursor:"pointer"}} onClick={onProfile}><div style={S.avatar}>{user.name[0]}</div><div><div style={S.userName}>{user.name}</div><div style={S.userRole}>{user.role==="admin"?"Amministratore":"Insegnante"}</div></div></div><button style={{...S.logoutBtn,marginBottom:4}} onClick={onProfile}>👤 Profilo</button><button style={S.logoutBtn} onClick={onLogout}>Esci →</button></div>
   </aside>);
 }
 
@@ -485,7 +478,7 @@ function HomePage({user,students,lessons,classLessons,classes,teachers,setPage,i
       <div style={S.card}>
         <h2 style={S.sectionTitle}>📋 Lezioni di oggi</h2>
         {todayIndiv.length===0&&todayClass.length===0?<div style={S.emptySmall}>Nessuna lezione programmata</div>:<>
-          {todayIndiv.map(l=>{const st=students.find(s=>s.id===l.student_id);const idx=st?.package_used||0;return(<div key={l.id} style={S.todayItem}><span style={S.timeBadge}>{l.time}</span><div style={{flex:1}}><div style={{fontWeight:600,fontSize:13}}>{st?.name||"—"}</div><div style={{fontSize:11,color:"#6b7280"}}>{l.topic} · {l.duration}min</div></div><ModeBadge mode={l.mode}/><LessonCounter current={idx} total={st?.package_total||0}/></div>);})}
+          {todayIndiv.map(l=>{const st=students.find(s=>s.id===l.student_id);const idx=lessons.filter(x=>x.student_id===l.student_id).sort((a,b)=>a.date.localeCompare(b.date)).findIndex(x=>x.id===l.id)+1;return(<div key={l.id} style={S.todayItem}><span style={S.timeBadge}>{l.time}</span><div style={{flex:1}}><div style={{fontWeight:600,fontSize:13}}>{st?.name||"—"}</div><div style={{fontSize:11,color:"#6b7280"}}>{l.topic} · {l.duration}min</div></div><ModeBadge mode={l.mode}/><LessonCounter current={idx} total={st?.package_total||0}/></div>);})}
           {todayClass.map(l=>{const cls=classes.find(c=>c.id===l.class_id);const idx=classLessons.filter(x=>x.class_id===l.class_id).sort((a,b)=>a.date.localeCompare(b.date)).findIndex(x=>x.id===l.id)+1;return(<div key={l.id} style={{...S.todayItem,borderLeft:"3px solid #f59e0b"}}><span style={S.timeBadge}>{l.time}</span><div style={{flex:1}}><div style={{fontWeight:600,fontSize:13}}>{cls?.name||"—"} 👥</div><div style={{fontSize:11,color:"#6b7280"}}>{l.topic} · {l.duration}min</div></div><ModeBadge mode={l.mode}/><LessonCounter current={idx} total={cls?.package_total||0}/></div>);})}
         </>}
       </div>
@@ -499,7 +492,7 @@ function HomePage({user,students,lessons,classLessons,classes,teachers,setPage,i
     </div>
     <div style={S.section}><h2 style={S.sectionTitle}>Prossime lezioni</h2>
       <div style={S.tableWrap}><table style={S.table}><thead><tr><th style={S.th}>N°</th><th style={S.th}>Data</th><th style={S.th}>Ora</th><th style={S.th}>Studente</th><th style={S.th}>Argomento</th><th style={S.th}>Modalità</th><th style={S.th}>Presenza</th></tr></thead>
-        <tbody>{[...myL].filter(l=>l.date>=todayStr).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,5).map(l=>{const st=students.find(s=>s.id===l.student_id);const idx=st?.package_used||0;return(<tr key={l.id} style={S.tr}><td style={S.td}><LessonCounter current={idx} total={st?.package_total||0}/></td><td style={S.td}>{fmtDate(l.date)}</td><td style={S.td}><span style={S.timeBadge}>{l.time}</span></td><td style={S.td}><strong>{st?.name||"—"}</strong></td><td style={{...S.td,maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.topic}</td><td style={S.td}><ModeBadge mode={l.mode}/></td><td style={S.td}><Pill ok={l.present}/></td></tr>);})}</tbody>
+        <tbody>{[...myL].filter(l=>l.date>=todayStr).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,5).map(l=>{const st=students.find(s=>s.id===l.student_id);const idx=lessons.filter(x=>x.student_id===l.student_id).sort((a,b)=>a.date.localeCompare(b.date)).findIndex(x=>x.id===l.id)+1;return(<tr key={l.id} style={S.tr}><td style={S.td}><LessonCounter current={idx} total={st?.package_total||0}/></td><td style={S.td}>{fmtDate(l.date)}</td><td style={S.td}><span style={S.timeBadge}>{l.time}</span></td><td style={S.td}><strong>{st?.name||"—"}</strong></td><td style={{...S.td,maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.topic}</td><td style={S.td}><ModeBadge mode={l.mode}/></td><td style={S.td}><Pill ok={l.present}/></td></tr>);})}</tbody>
       </table></div>
     </div>
     {dashDetail&&<StudentDetailModal student={dashDetail} lessons={lessons.filter(l=>l.student_id===dashDetail.id)} onClose={()=>setDashDetail(null)}/>}
@@ -670,7 +663,7 @@ function LessonsPage({user,students,lessons,teachers,isAdmin,onAdd,onAddRecurrin
   const sorted=[...filtered].sort((a,b)=>a.date.localeCompare(b.date)||(a.time||"").localeCompare(b.time||""));
   const years=[...new Set(myL.map(l=>l.date.slice(0,4)))].sort().reverse();
   const months=[...new Set(myL.map(l=>l.date.slice(0,7)))].sort().reverse();
-  const lIdx=l=>{const st=students.find(s=>s.id===l.student_id);const all=lessons.filter(x=>x.student_id===l.student_id).sort((a,b)=>a.date.localeCompare(b.date)||(a.time||"").localeCompare(b.time||""));const pos=all.findIndex(x=>x.id===l.id)+1;const offset=(st?.package_used||0)-all.length;return Math.max(1,offset+pos);};
+  const lIdx=l=>{const st=students.find(s=>s.id===l.student_id);const all=lessons.filter(x=>x.student_id===l.student_id).sort((a,b)=>a.date.localeCompare(b.date)||(a.time||"").localeCompare(b.time||""));const pos=all.findIndex(x=>x.id===l.id)+1;return (st?.pkg_offset||0)+pos;};
   // Raggruppa per giorno
   const byDay=useMemo(()=>{const map={};sorted.forEach(l=>{if(!map[l.date])map[l.date]=[];map[l.date].push(l);});return Object.entries(map).sort((a,b)=>a[0].localeCompare(b[0]));},[ sorted ]);
   return (<div style={S.page}>
@@ -702,8 +695,7 @@ function LessonsPage({user,students,lessons,teachers,isAdmin,onAdd,onAddRecurrin
                 {[...dayLessons].sort((a,b)=>(a.time||"").localeCompare(b.time||"")).map(l=>{
                   const st=students.find(s=>s.id===l.student_id);if(!st)return null;
                   const t=teachers.find(x=>x.id===l.teacher_id);
-                  const isPast=l.date<today();
-                  return(<div key={l.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 18px",borderBottom:"1px solid #f8fafc",opacity:isPast?0.45:1}}>
+                  return(<div key={l.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 18px",borderBottom:"1px solid #f8fafc"}}>
                     <span style={S.timeBadge}>{l.time||"—"}</span>
                     <span style={{fontSize:12,color:"#9ca3af",minWidth:32}}>{l.duration}m</span>
                     <strong style={{fontSize:13,flex:"0 0 auto",minWidth:100}}>{st.name}</strong>
@@ -723,7 +715,7 @@ function LessonsPage({user,students,lessons,teachers,isAdmin,onAdd,onAddRecurrin
       ):(
         <div style={S.tableWrap}><table style={S.table}>
           <thead><tr><th style={S.th}>N°</th><th style={S.th}>Data</th><th style={S.th}>Ora</th><th style={S.th}>Min</th><th style={S.th}>Studente</th><th style={S.th}>Argomento</th><th style={S.th}>Compiti</th><th style={S.th}>Modalità</th><th style={S.th}>Presenza</th><th style={S.th}></th></tr></thead>
-          <tbody>{sorted.map(l=>{const st=students.find(s=>s.id===l.student_id);if(!st)return null;const isPast=l.date<today();return(<tr key={l.id} style={{...S.tr,opacity:isPast?0.45:1}}><td style={S.td}><LessonCounter current={lIdx(l)} total={st.package_total||0}/></td><td style={S.td}>{fmtDate(l.date)}</td><td style={S.td}><span style={S.timeBadge}>{l.time||"—"}</span></td><td style={S.td}><span style={{fontSize:12,color:"#6b7280"}}>{l.duration}m</span></td><td style={S.td}><strong>{st.name}</strong></td><td style={{...S.td,maxWidth:150,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.topic}</td><td style={{...S.td,maxWidth:120,color:"#6b7280",fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.homework||"—"}</td><td style={S.td}><ModeBadge mode={l.mode} zoom={l.zoom_account}/></td><td style={S.td}><Pill ok={l.present}/></td><td style={S.td}><div style={{display:"flex",gap:4}}><button style={S.iconBtn} onClick={()=>setModal(l)}>✏️</button><button style={S.iconBtn} onClick={()=>setConfirm({id:l.id,sid:l.student_id})}>🗑️</button></div></td></tr>);})}</tbody>
+          <tbody>{sorted.map(l=>{const st=students.find(s=>s.id===l.student_id);if(!st)return null;return(<tr key={l.id} style={S.tr}><td style={S.td}><LessonCounter current={lIdx(l)} total={st.package_total||0}/></td><td style={S.td}>{fmtDate(l.date)}</td><td style={S.td}><span style={S.timeBadge}>{l.time||"—"}</span></td><td style={S.td}><span style={{fontSize:12,color:"#6b7280"}}>{l.duration}m</span></td><td style={S.td}><strong>{st.name}</strong></td><td style={{...S.td,maxWidth:150,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.topic}</td><td style={{...S.td,maxWidth:120,color:"#6b7280",fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.homework||"—"}</td><td style={S.td}><ModeBadge mode={l.mode} zoom={l.zoom_account}/></td><td style={S.td}><Pill ok={l.present}/></td><td style={S.td}><div style={{display:"flex",gap:4}}><button style={S.iconBtn} onClick={()=>setModal(l)}>✏️</button><button style={S.iconBtn} onClick={()=>setConfirm({id:l.id,sid:l.student_id})}>🗑️</button></div></td></tr>);})}</tbody>
         </table></div>
       )
     )}
