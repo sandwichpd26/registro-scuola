@@ -205,7 +205,9 @@ export default function App() {
     try { await db.updateStudentField(id,{teacher_id:tid}); showToast("Studente riassegnato"); }
     catch(e) { showToast("Errore","err"); }
   };
-  const bump = (sid,d) => {
+  const bump = (sid,d,date) => {
+    const t=today();
+    if(date&&date>t) return; // lezione futura: non toccare package_used
     setStudents(p=>p.map(x=>x.id===sid?{...x,package_used:Math.max(0,(x.package_used||0)+d)}:x));
   };
 
@@ -217,7 +219,7 @@ export default function App() {
       return {...baseLesson, id: uid(), teacher_id: currentUser.id, date: d.toISOString().split("T")[0], recurring_group: groupId};
     });
     setLessons(p=>[...lessons,...p]);
-    lessons.forEach(obj=>bump(obj.student_id,1));
+    lessons.forEach(obj=>bump(obj.student_id,1,obj.date));
     try {
       for(const obj of lessons) await db.upsertLesson(obj);
       showToast(`${times} lezioni registrate ✓`);
@@ -225,13 +227,13 @@ export default function App() {
   };
   const addLesson = async l => {
     const obj={...l,id:uid(),teacher_id:currentUser.id};
-    setLessons(p=>[obj,...p]); bump(l.student_id,1);
+    setLessons(p=>[obj,...p]); bump(l.student_id,1,obj.date);
     try { await db.upsertLesson(obj); showToast("Lezione registrata ✓"); }
     catch(e) { setLessons(p=>p.filter(x=>x.id!==obj.id)); showToast("Errore salvataggio","err"); }
   };
   const addLessonAsAdmin = async l => {
     const obj={...l,id:uid()};
-    setLessons(p=>[obj,...p]); bump(l.student_id,1);
+    setLessons(p=>[obj,...p]); bump(l.student_id,1,obj.date);
     try { await db.upsertLesson(obj); }
     catch(e) { setLessons(p=>p.filter(x=>x.id!==obj.id)); throw e; }
   };
@@ -242,7 +244,8 @@ export default function App() {
   };
   const deleteLesson = async (id,sid) => {
     const prev=lessons;
-    setLessons(p=>p.filter(l=>l.id!==id)); bump(sid,-1);
+    const delL=lessons.find(l=>l.id===id);
+    setLessons(p=>p.filter(l=>l.id!==id)); bump(sid,-1,delL?.date);
     try { await db.deleteLesson(id); showToast("Lezione eliminata"); }
     catch(e) { setLessons(prev); showToast("Errore","err"); }
   };
@@ -547,7 +550,7 @@ function StudentsPage({user,students,classes,teachers,lessons,classLessons,isAdm
         <div style={S.cardTop}><div style={S.studentAvatar}>{student.name.split(" ").map(n=>n[0]).join("").slice(0,2)}</div><div style={{flex:1}}><div style={S.studentName}>{student.name}</div><div style={S.studentMeta}>{teacher?.name||"—"}</div></div><LevelBadge level={student.level}/></div>
         <div style={{marginBottom:10,fontSize:12,color:"#6b7280",display:"flex",gap:12,flexWrap:"wrap"}}>{student.phone&&<span>📞 {student.phone}</span>}{student.email&&<span>✉️ {student.email}</span>}</div>
         <div style={{marginBottom:12}}><div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}><span style={{color:"#6b7280"}}>Pacchetto</span><span style={{fontWeight:700,color:pkgColor(student)}}>{student.package_used}/{student.package_total} · <span style={{color:rem<=3?"#ef4444":"#10b981"}}>{rem} rimaste</span></span></div><div style={{height:6,background:"#f1f5f9",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:`${Math.min(100,(student.package_used/student.package_total)*100)}%`,background:pkgColor(student),borderRadius:3}}/></div></div>
-        <div style={S.cardStats}><div style={S.miniStat}><span style={S.miniStatVal}>{sl.length}</span><span style={S.miniStatLbl}>lezioni</span></div><div style={S.miniStat}><span style={S.miniStatVal}>{lastL?fmtDate(lastL.date):"—"}</span><span style={S.miniStatLbl}>ultima</span></div><div style={S.miniStat}><span style={S.miniStatVal}>{lastL?.time||"—"}</span><span style={S.miniStatLbl}>orario</span></div></div>
+        <div style={S.cardStats}><div style={S.miniStat}><span style={S.miniStatVal}>{student.package_used}</span><span style={S.miniStatLbl}>lezioni</span></div><div style={S.miniStat}><span style={S.miniStatVal}>{lastL?fmtDate(lastL.date):"—"}</span><span style={S.miniStatLbl}>ultima</span></div><div style={S.miniStat}><span style={S.miniStatVal}>{lastL?.time||"—"}</span><span style={S.miniStatLbl}>orario</span></div></div>
         {student.notes&&<div style={S.cardNotes}>📝 {student.notes}</div>}
         <div style={S.cardActions}><button style={S.btnSm} onClick={()=>setDS(student)}>Scheda</button>{isAdmin&&<button style={S.btnSm} onClick={()=>setEdit(student)}>Modifica</button>}{isAdmin&&<button style={{...S.btnSm,...S.btnDanger}} onClick={()=>setConfirm(student.id)}>Archivia</button>}{isAdmin&&<button style={{...S.btnSm,background:"#fee2e220",color:"#dc2626",border:"1px solid #fca5a5"}} onClick={()=>setConfirmTrash(student.id)}>🗑️ Cestino</button>}</div>
       </div>);
