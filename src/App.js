@@ -106,7 +106,8 @@ export default function App() {
         db.getClassLessons(),
         db.getNotes(user.id),
       ]);
-      const recalcStudents=st.map(s=>({...s,pkg_offset:s.package_used||0,package_used:(s.package_used||0)+les.filter(l=>l.student_id===s.id).length}));
+      const todayStr=new Date().toISOString().split("T")[0];
+      const recalcStudents=st.map(s=>({...s,pkg_offset:s.package_used||0,package_used:(s.package_used||0)+les.filter(l=>l.student_id===s.id&&l.date<=todayStr).length}));
       setStudents(recalcStudents); setLessons(les); setClasses(cl);
       setClassLessons(cll); setNotes(nt);
     } catch(e) {
