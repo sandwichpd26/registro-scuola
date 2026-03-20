@@ -214,7 +214,6 @@ export default function App() {
       return {...x,package_used:(x.pkg_offset||0)+counted};
     }));
   };
-  const bump = () => {}; // no-op mantenuto per compatibilità
 
   const addRecurringLessons = async (baseLesson, times) => {
     const groupId = uid();
