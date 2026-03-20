@@ -205,37 +205,44 @@ export default function App() {
     try { await db.updateStudentField(id,{teacher_id:tid}); showToast("Studente riassegnato"); }
     catch(e) { showToast("Errore","err"); }
   };
-  const bump = (sid,d,date) => {
+  // package_used = pkg_offset (fisso dal DB) + lezioni registrate con data <= oggi
+  const refreshPackage = (updatedLessons, sid) => {
     const t=today();
-    if(date&&date>t) return; // lezione futura: non toccare package_used
-    setStudents(p=>p.map(x=>x.id===sid?{...x,package_used:Math.max(0,(x.package_used||0)+d)}:x));
+    setStudents(p=>p.map(x=>{
+      if(x.id!==sid) return x;
+      const counted=updatedLessons.filter(l=>l.student_id===sid&&l.date<=t).length;
+      return {...x,package_used:(x.pkg_offset||0)+counted};
+    }));
   };
+  const bump = () => {}; // no-op mantenuto per compatibilità
 
   const addRecurringLessons = async (baseLesson, times) => {
     const groupId = uid();
-    const lessons = Array.from({length: times}, (_, i) => {
+    const newLessons = Array.from({length: times}, (_, i) => {
       const d = new Date(baseLesson.date);
       d.setDate(d.getDate() + i * 7);
       return {...baseLesson, id: uid(), teacher_id: currentUser.id, date: d.toISOString().split("T")[0], recurring_group: groupId};
     });
-    setLessons(p=>[...lessons,...p]);
-    lessons.forEach(obj=>bump(obj.student_id,1,obj.date));
+    const updatedL=[...newLessons,...lessons];
+    setLessons(updatedL); refreshPackage(updatedL, baseLesson.student_id);
     try {
-      for(const obj of lessons) await db.upsertLesson(obj);
+      for(const obj of newLessons) await db.upsertLesson(obj);
       showToast(`${times} lezioni registrate ✓`);
     } catch(e) { showToast("Errore salvataggio","err"); }
   };
   const addLesson = async l => {
     const obj={...l,id:uid(),teacher_id:currentUser.id};
-    setLessons(p=>[obj,...p]); bump(l.student_id,1,obj.date);
+    const updated=[obj,...lessons];
+    setLessons(updated); refreshPackage(updated, l.student_id);
     try { await db.upsertLesson(obj); showToast("Lezione registrata ✓"); }
-    catch(e) { setLessons(p=>p.filter(x=>x.id!==obj.id)); showToast("Errore salvataggio","err"); }
+    catch(e) { setLessons(lessons); showToast("Errore salvataggio","err"); }
   };
   const addLessonAsAdmin = async l => {
     const obj={...l,id:uid()};
-    setLessons(p=>[obj,...p]); bump(l.student_id,1,obj.date);
+    const updated=[obj,...lessons];
+    setLessons(updated); refreshPackage(updated, l.student_id);
     try { await db.upsertLesson(obj); }
-    catch(e) { setLessons(p=>p.filter(x=>x.id!==obj.id)); throw e; }
+    catch(e) { setLessons(lessons); throw e; }
   };
   const updateLesson = async l => {
     setLessons(p=>p.map(x=>x.id===l.id?l:x));
@@ -244,8 +251,8 @@ export default function App() {
   };
   const deleteLesson = async (id,sid) => {
     const prev=lessons;
-    const delL=lessons.find(l=>l.id===id);
-    setLessons(p=>p.filter(l=>l.id!==id)); bump(sid,-1,delL?.date);
+    const updated=lessons.filter(l=>l.id!==id);
+    setLessons(updated); refreshPackage(updated, sid);
     try { await db.deleteLesson(id); showToast("Lezione eliminata"); }
     catch(e) { setLessons(prev); showToast("Errore","err"); }
   };
