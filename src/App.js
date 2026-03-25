@@ -49,8 +49,8 @@ const db = {
   async deleteTeacher(id){ const {error}=await supabase.from("teachers").delete().eq("id",id); if(error)throw error; },
 
   async getStudents()  { const {data,error}=await supabase.from("students").select("*").order("name"); if(error)throw error; return data||[]; },
-  async upsertStudent(s) { const {data,error}=await supabase.from("students").upsert(s).select().single(); if(error)throw error; return data; },
-  async updateStudentField(id,fields) { const {error}=await supabase.from("students").update(fields).eq("id",id); if(error)throw error; },
+  async upsertStudent(s) { const {pkg_offset,...clean}=s; const {data,error}=await supabase.from("students").upsert(clean).select().single(); if(error)throw error; return data; },
+  async updateStudentField(id,fields) { const {pkg_offset,...clean}=fields; const {error}=await supabase.from("students").update(clean).eq("id",id); if(error)throw error; },
 
   async getLessons()   { const {data,error}=await supabase.from("lessons").select("*").order("date",{ascending:false}); if(error)throw error; return data||[]; },
   async upsertLesson(l){ const {data,error}=await supabase.from("lessons").upsert(l).select().single(); if(error)throw error; return data; },
@@ -421,11 +421,10 @@ function LoginScreen({teachers,onLogin}) {
 // ── SIDEBAR — identica all'originale ─────────────────────────────
 function Sidebar({user,page,setPage,isAdmin,onLogout,onProfile,archivedCount,trashedCount,alertCount,theme,themeKey,onChangeTheme}) {
   const items=[{id:"home",icon:"🏠",label:"Dashboard"},{id:"students",icon:"👤",label:"Studenti & Classi"},{id:"lessons",icon:"📚",label:"Lezioni Individuali"},{id:"classes",icon:"👥",label:"Lezioni di Classe"},{id:"calendar",icon:"📅",label:"Calendario"},{id:"reports",icon:"📊",label:"Report",badge:alertCount>0?`⚠️ ${alertCount}`:null,warn:true},{id:"report_s",icon:"📋",label:"Report Studenti"},...(isAdmin?[{id:"archive",icon:"🗄️",label:"Archivio",badge:archivedCount>0?archivedCount:null},{id:"trash",icon:"🗑️",label:"Cestino",badge:trashedCount>0?trashedCount:null},{id:"admin",icon:"⚙️",label:"Amministrazione"}]:[])];
-  const sb=theme?.sidebar||"#0f172a";const sbBorder="1px solid rgba(255,255,255,0.08)";
-  return (<aside style={{...S.sidebar,background:sb}}>
-    <div style={{...S.sidebarTop,borderBottom:sbBorder}}><div style={S.sidebarLogo}>🎓</div><div><div style={S.sidebarBrand}>Sandwich Institute</div><div style={{color:"rgba(255,255,255,0.4)",fontSize:10}}>Registro</div></div></div>
-    <nav style={{...S.nav,background:"transparent"}}>{items.map(item=>(<button key={item.id} className="nav-item" style={{...S.navItem,color:"rgba(255,255,255,0.6)",...(page===item.id?{...S.navItemActive,background:theme?.primary||"#6366f1",color:"white"}:{})}} onClick={()=>setPage(item.id)}><span style={S.navIcon}>{item.icon}</span><span style={{flex:1}}>{item.label}</span>{item.badge&&<span style={{...S.badge,...(item.warn?{background:"rgba(239,68,68,0.2)",color:"#fca5a5"}:{})}}>{item.badge}</span>}</button>))}</nav>
-    <div style={{...S.sidebarBottom,borderTop:sbBorder}}><div style={{...S.userChip,cursor:"pointer"}} onClick={onProfile}><div style={{...S.avatar,background:theme?.primary||"#6366f1"}}>{user.name[0]}</div><div><div style={S.userName}>{user.name}</div><div style={{...S.userRole,color:"rgba(255,255,255,0.4)"}}>{user.role==="admin"?"Amministratore":"Insegnante"}</div></div></div><button style={{...S.logoutBtn,border:"1px solid rgba(255,255,255,0.1)",color:"rgba(255,255,255,0.5)",marginBottom:4}} onClick={onProfile}>👤 Profilo</button><button style={{...S.logoutBtn,border:"1px solid rgba(255,255,255,0.1)",color:"rgba(255,255,255,0.5)"}} onClick={onLogout}>Esci →</button></div>
+  return (<aside style={S.sidebar}>
+    <div style={S.sidebarTop}><div style={S.sidebarLogo}>🎓</div><div><div style={S.sidebarBrand}>Sandwich Institute</div><div style={{color:"#475569",fontSize:10}}>Registro</div></div></div>
+    <nav style={{...S.nav,background:theme?.sidebar||"#0f172a"}}>{items.map(item=>(<button key={item.id} className="nav-item" style={{...S.navItem,...(page===item.id?{...S.navItemActive,background:theme?.primary||"#6366f1"}:{})}} onClick={()=>setPage(item.id)}><span style={S.navIcon}>{item.icon}</span><span style={{flex:1}}>{item.label}</span>{item.badge&&<span style={{...S.badge,...(item.warn?{background:"#ef444420",color:"#ef4444"}:{})}}>{item.badge}</span>}</button>))}</nav>
+    <div style={S.sidebarBottom}><div style={{...S.userChip,cursor:"pointer"}} onClick={onProfile}><div style={S.avatar}>{user.name[0]}</div><div><div style={S.userName}>{user.name}</div><div style={S.userRole}>{user.role==="admin"?"Amministratore":"Insegnante"}</div></div></div><button style={{...S.logoutBtn,marginBottom:4}} onClick={onProfile}>👤 Profilo</button><button style={S.logoutBtn} onClick={onLogout}>Esci →</button></div>
   </aside>);
 }
 
