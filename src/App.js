@@ -23,6 +23,11 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON);
 const uid      = () => crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2,18);
 const today    = () => new Date().toISOString().split("T")[0];
 const fmtDate  = d => { if(!d)return""; const [y,m,dd]=d.split("-"); return `${dd}/${m}/${y}`; };
+// Cifra la password con SHA-256 (one-way: non è mai possibile risalire alla password originale)
+const hashPassword = async (plain) => {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(plain));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("");
+};
 const LEVELS   = Array.from({length:50},(_,i)=>i+1);
 const DURATIONS= [30,45,60,90,120];
 const THEMES = {
@@ -51,6 +56,7 @@ const db = {
   async getStudents()  { const {data,error}=await supabase.from("students").select("*").order("name"); if(error)throw error; return data||[]; },
   async upsertStudent(s) { const {pkg_offset,...clean}=s; const {data,error}=await supabase.from("students").upsert(clean).select().single(); if(error)throw error; return data; },
   async updateStudentField(id,fields) { const {pkg_offset,...clean}=fields; const {error}=await supabase.from("students").update(clean).eq("id",id); if(error)throw error; },
+  async deleteStudent(id){ const {error}=await supabase.from("students").delete().eq("id",id); if(error)throw error; },
 
   async getLessons()   { const {data,error}=await supabase.from("lessons").select("*").order("date",{ascending:false}); if(error)throw error; return data||[]; },
   async upsertLesson(l){ const {data,error}=await supabase.from("lessons").upsert(l).select().single(); if(error)throw error; return data; },
@@ -197,7 +203,7 @@ export default function App() {
   const deleteForever = async id => {
     const prev=students;
     setStudents(p=>p.filter(x=>x.id!==id));
-    try { await supabase.from("students").delete().eq("id",id); showToast("Studente eliminato definitivamente"); }
+    try { await db.deleteStudent(id); showToast("Studente eliminato definitivamente"); }
     catch(e) { setStudents(prev); showToast("Errore","err"); }
   };
   const reassignStudent = async (id,tid) => {
@@ -222,12 +228,17 @@ export default function App() {
       d.setDate(d.getDate() + i * 7);
       return {...baseLesson, id: uid(), teacher_id: currentUser.id, date: d.toISOString().split("T")[0], recurring_group: groupId};
     });
+    const prevLessons = lessons;
     const updatedL=[...newLessons,...lessons];
     setLessons(updatedL); refreshPackage(updatedL, baseLesson.student_id);
     try {
       for(const obj of newLessons) await db.upsertLesson(obj);
       showToast(`${times} lezioni registrate ✓`);
-    } catch(e) { showToast("Errore salvataggio","err"); }
+    } catch(e) {
+      // Rollback completo se anche solo una lezione fallisce
+      setLessons(prevLessons); refreshPackage(prevLessons, baseLesson.student_id);
+      showToast("Errore salvataggio — nessuna lezione registrata","err");
+    }
   };
   const addLesson = async l => {
     const obj={...l,id:uid(),teacher_id:currentUser.id};
@@ -264,7 +275,7 @@ export default function App() {
     catch(e) { showToast("Errore aggiornamento pacchetto","err"); }
   };
   const addClass = async c => {
-    const obj={...c,id:uid(),teacher_id:currentUser.id,package_used:0};
+    const obj={...c,id:uid(),teacher_id:c.teacher_id||currentUser.id,package_used:0};
     setClasses(p=>[...p,obj]);
     try { await db.upsertClass(obj); showToast("Classe creata"); }
     catch(e) { setClasses(p=>p.filter(x=>x.id!==obj.id)); showToast("Errore salvataggio","err"); }
@@ -356,7 +367,7 @@ export default function App() {
 
 function ProfileModal({user,themeKey,onChangeTheme,onSave,onClose}) {
   const [pw,setPw]=useState("");const [pw2,setPw2]=useState("");const [err,setErr]=useState("");
-  const save=()=>{if(pw.length<4){setErr("Minimo 4 caratteri");return;}if(pw!==pw2){setErr("Le password non coincidono");return;}onSave(pw);};
+  const save=async ()=>{if(pw.length<4){setErr("Minimo 4 caratteri");return;}if(pw!==pw2){setErr("Le password non coincidono");return;}const hashed=await hashPassword(pw);onSave(hashed);};
   return (<Overlay onClose={onClose}><h2 style={S.modalTitle}>👤 Il tuo profilo</h2>
     <div style={{background:"#f0fdf4",borderRadius:10,padding:"12px 16px",marginBottom:16,fontSize:14}}><strong>{user.name}</strong><br/><span style={{color:"#6b7280"}}>{user.email}</span></div>
     {onChangeTheme&&<div style={{marginBottom:20}}>
@@ -397,7 +408,9 @@ function LoginScreen({teachers,onLogin}) {
   const [email,setEmail]=useState(""); const [pass,setPass]=useState(""); const [err,setErr]=useState(""); const [busy,setBusy]=useState(false);
   const go = async () => {
     setBusy(true); setErr("");
-    const u=teachers?.find(t=>t.email===email&&t.password===pass);
+    const hashed = await hashPassword(pass);
+    // Supporta sia password già cifrate (SHA-256, 64 chars) che ancora in chiaro (migrazione graduale)
+    const u=teachers?.find(t=>t.email===email&&(t.password===hashed||t.password===pass));
     if(u) { await onLogin(u); }
     else  { setErr("Email o password non corretti"); setBusy(false); }
   };
@@ -670,7 +683,7 @@ function LessonsPage({user,students,lessons,teachers,isAdmin,onAdd,onAddRecurrin
   const [modal,setModal]=useState(null);const [fS,setFS]=useState("");const [fM,setFM]=useState("");const [fY,setFY]=useState("");const [fD,setFD]=useState("");const [fT,setFT]=useState("");const [confirm,setConfirm]=useState(null);const [openDays,setOpenDays]=useState({});const toggleDay=d=>setOpenDays(p=>({...p,[d]:!p[d]}));const isDayOpen=d=>openDays[d]!==false;const [detailSt,setDetailSt]=useState(null);const [viewMode,setViewMode]=useState("day");
   const myL=isAdmin?lessons:lessons.filter(l=>l.teacher_id===user.id);
   const filtered=myL.filter(l=>l.date>=today()&&(!fS||l.student_id===fS)&&(!fT||l.teacher_id===fT)&&(!fY||l.date.startsWith(fY))&&(!fM||l.date.slice(0,7)===fM)&&(!fD||l.date===fD));
-  const sorted=[...filtered].sort((a,b)=>a.date.localeCompare(b.date)||(a.time||"").localeCompare(b.time||""));
+  const sorted=useMemo(()=>[...filtered].sort((a,b)=>a.date.localeCompare(b.date)||(a.time||"").localeCompare(b.time||"")),[filtered]);
   const years=[...new Set(myL.map(l=>l.date.slice(0,4)))].sort().reverse();
   const months=[...new Set(myL.map(l=>l.date.slice(0,7)))].sort().reverse();
   const lIdx=l=>{const st=students.find(s=>s.id===l.student_id);const all=lessons.filter(x=>x.student_id===l.student_id).sort((a,b)=>a.date.localeCompare(b.date)||(a.time||"").localeCompare(b.time||""));const pos=all.findIndex(x=>x.id===l.id)+1;return (st?.pkg_offset||0)+pos;};
@@ -1298,14 +1311,24 @@ function AdminPage({teachers,students,lessons,classLessons,onAddTeacher,onDelete
 function TeacherModal({teacher,onSave,onClose}) {
   const [form,setForm]=useState(teacher||{name:"",email:"",password:"",phone:""});
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+  const handleSave=async()=>{
+    if(!form.name||!form.email)return;
+    if(form.password&&form.password.length<64){
+      // La password è stata inserita in chiaro: la cifriamo prima di salvare
+      const hashed=await hashPassword(form.password);
+      onSave({...form,password:hashed});
+    } else {
+      onSave(form);
+    }
+  };
   return (<Overlay onClose={onClose}><h2 style={S.modalTitle}>{teacher?"Modifica Insegnante":"Nuovo Insegnante"}</h2>
     <div style={S.field}><label style={S.label}>Nome</label><input style={S.input} value={form.name} onChange={e=>set("name",e.target.value)}/></div>
     <div style={S.field}><label style={S.label}>Email</label><input style={S.input} type="email" value={form.email} onChange={e=>set("email",e.target.value)}/></div>
     <div style={S.fieldRow}>
-      <div style={S.field}><label style={S.label}>Password</label><input style={S.input} value={form.password} onChange={e=>set("password",e.target.value)}/></div>
+      <div style={S.field}><label style={S.label}>Password</label><input style={S.input} type="password" value={form.password} onChange={e=>set("password",e.target.value)} placeholder={teacher?"Lascia vuoto per non cambiare":""}/></div>
       <div style={S.field}><label style={S.label}>Telefono</label><input style={S.input} value={form.phone||""} onChange={e=>set("phone",e.target.value)} placeholder="347-0000000"/></div>
     </div>
-    <div style={S.modalActions}><button style={S.btnSecondary} onClick={onClose}>Annulla</button><button style={{...S.btnPrimary,width:"auto"}} disabled={!form.name||!form.email} onClick={()=>onSave(form)}>{teacher?"Salva":"Aggiungi"}</button></div>
+    <div style={S.modalActions}><button style={S.btnSecondary} onClick={onClose}>Annulla</button><button style={{...S.btnPrimary,width:"auto"}} disabled={!form.name||!form.email} onClick={handleSave}>{teacher?"Salva":"Aggiungi"}</button></div>
   </Overlay>);
 }
 
