@@ -107,9 +107,14 @@ export default function App() {
         db.getClassLessons(),
         db.getNotes(user.id),
       ]);
-      // Usa package_used dal DB così com'è — è già aggiornato manualmente
-      // pkg_offset serve a refreshPackage per aggiungere nuove lezioni senza perdere il valore base
-      const recalcStudents=st.map(s=>({...s,pkg_offset:s.package_used||0,package_used:s.package_used||0}));
+      // package_used dal DB = lezioni pre-app + lezioni nel calendario (già aggiornato manualmente)
+      // pkg_offset = lezioni pre-app = package_used_DB - numero lezioni nel calendario
+      // lIdx usa pkg_offset per numerare correttamente le lezioni nel calendario
+      const recalcStudents=st.map(s=>{
+        const calCount=les.filter(l=>l.student_id===s.id).length;
+        const offset=Math.max(0,(s.package_used||0)-calCount);
+        return {...s,pkg_offset:offset,package_used:s.package_used||0};
+      });
       setStudents(recalcStudents); setLessons(les); setClasses(cl);
       setClassLessons(cll); setNotes(nt);
     } catch(e) {
@@ -679,7 +684,7 @@ function LessonsPage({user,students,lessons,teachers,isAdmin,onAdd,onAddRecurrin
   const sorted=useMemo(()=>[...filtered].sort((a,b)=>a.date.localeCompare(b.date)||(a.time||"").localeCompare(b.time||"")),[filtered]);
   const years=[...new Set(myL.map(l=>l.date.slice(0,4)))].sort().reverse();
   const months=[...new Set(myL.map(l=>l.date.slice(0,7)))].sort().reverse();
-  const lIdx=l=>{const st=students.find(s=>s.id===l.student_id);const all=lessons.filter(x=>x.student_id===l.student_id).sort((a,b)=>a.date.localeCompare(b.date)||(a.time||"").localeCompare(b.time||""));const pos=all.findIndex(x=>x.id===l.id)+1;return (st?.package_used||0)-all.length+pos;};
+  const lIdx=l=>{const st=students.find(s=>s.id===l.student_id);const all=lessons.filter(x=>x.student_id===l.student_id).sort((a,b)=>a.date.localeCompare(b.date)||(a.time||"").localeCompare(b.time||""));const pos=all.findIndex(x=>x.id===l.id)+1;return (st?.pkg_offset||0)+pos;};
   // Raggruppa per giorno
   const byDay=useMemo(()=>{const map={};sorted.forEach(l=>{if(!map[l.date])map[l.date]=[];map[l.date].push(l);});return Object.entries(map).sort((a,b)=>a[0].localeCompare(b[0]));},[ sorted ]);
   return (<div style={S.page}>
