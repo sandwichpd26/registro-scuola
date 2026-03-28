@@ -684,7 +684,24 @@ function LessonsPage({user,students,lessons,teachers,isAdmin,onAdd,onAddRecurrin
   const sorted=useMemo(()=>[...filtered].sort((a,b)=>a.date.localeCompare(b.date)||(a.time||"").localeCompare(b.time||"")),[filtered]);
   const years=[...new Set(myL.map(l=>l.date.slice(0,4)))].sort().reverse();
   const months=[...new Set(myL.map(l=>l.date.slice(0,7)))].sort().reverse();
-  const lIdx=l=>{const st=students.find(s=>s.id===l.student_id);const all=lessons.filter(x=>x.student_id===l.student_id).sort((a,b)=>a.date.localeCompare(b.date)||(a.time||"").localeCompare(b.time||""));const pos=all.findIndex(x=>x.id===l.id)+1;return (st?.pkg_offset||0)+pos;};
+  const lIdx=l=>{
+    const st=students.find(s=>s.id===l.student_id);
+    if(!st) return 0;
+    const t=today();
+    const all=lessons.filter(x=>x.student_id===l.student_id).sort((a,b)=>a.date.localeCompare(b.date)||(a.time||"").localeCompare(b.time||""));
+    const past=all.filter(x=>x.date<=t);
+    const future=all.filter(x=>x.date>t);
+    const isPast=l.date<=t;
+    if(isPast){
+      // posizione tra le lezioni passate (1-based dalla fine = package_used)
+      const posFromEnd=past.slice().reverse().findIndex(x=>x.id===l.id);
+      return (st.package_used||0)-posFromEnd;
+    } else {
+      // lezione futura: continua da package_used+1
+      const posInFuture=future.findIndex(x=>x.id===l.id)+1;
+      return (st.package_used||0)+posInFuture;
+    }
+  };
   // Raggruppa per giorno
   const byDay=useMemo(()=>{const map={};sorted.forEach(l=>{if(!map[l.date])map[l.date]=[];map[l.date].push(l);});return Object.entries(map).sort((a,b)=>a[0].localeCompare(b[0]));},[ sorted ]);
   return (<div style={S.page}>
