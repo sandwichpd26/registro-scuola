@@ -23,11 +23,6 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON);
 const uid      = () => crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2,18);
 const today    = () => new Date().toISOString().split("T")[0];
 const fmtDate  = d => { if(!d)return""; const [y,m,dd]=d.split("-"); return `${dd}/${m}/${y}`; };
-// Cifra la password con SHA-256 (one-way: non è mai possibile risalire alla password originale)
-const hashPassword = async (plain) => {
-  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(plain));
-  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("");
-};
 const LEVELS   = Array.from({length:50},(_,i)=>i+1);
 const DURATIONS= [30,45,60,90,120];
 const THEMES = {
@@ -235,7 +230,6 @@ export default function App() {
       for(const obj of newLessons) await db.upsertLesson(obj);
       showToast(`${times} lezioni registrate ✓`);
     } catch(e) {
-      // Rollback completo se anche solo una lezione fallisce
       setLessons(prevLessons); refreshPackage(prevLessons, baseLesson.student_id);
       showToast("Errore salvataggio — nessuna lezione registrata","err");
     }
@@ -367,7 +361,7 @@ export default function App() {
 
 function ProfileModal({user,themeKey,onChangeTheme,onSave,onClose}) {
   const [pw,setPw]=useState("");const [pw2,setPw2]=useState("");const [err,setErr]=useState("");
-  const save=async ()=>{if(pw.length<4){setErr("Minimo 4 caratteri");return;}if(pw!==pw2){setErr("Le password non coincidono");return;}const hashed=await hashPassword(pw);onSave(hashed);};
+  const save=()=>{if(pw.length<4){setErr("Minimo 4 caratteri");return;}if(pw!==pw2){setErr("Le password non coincidono");return;}onSave(pw);};
   return (<Overlay onClose={onClose}><h2 style={S.modalTitle}>👤 Il tuo profilo</h2>
     <div style={{background:"#f0fdf4",borderRadius:10,padding:"12px 16px",marginBottom:16,fontSize:14}}><strong>{user.name}</strong><br/><span style={{color:"#6b7280"}}>{user.email}</span></div>
     {onChangeTheme&&<div style={{marginBottom:20}}>
@@ -408,9 +402,7 @@ function LoginScreen({teachers,onLogin}) {
   const [email,setEmail]=useState(""); const [pass,setPass]=useState(""); const [err,setErr]=useState(""); const [busy,setBusy]=useState(false);
   const go = async () => {
     setBusy(true); setErr("");
-    const hashed = await hashPassword(pass);
-    // Supporta sia password già cifrate (SHA-256, 64 chars) che ancora in chiaro (migrazione graduale)
-    const u=teachers?.find(t=>t.email===email&&(t.password===hashed||t.password===pass));
+    const u=teachers?.find(t=>t.email===email&&t.password===pass);
     if(u) { await onLogin(u); }
     else  { setErr("Email o password non corretti"); setBusy(false); }
   };
@@ -1311,24 +1303,14 @@ function AdminPage({teachers,students,lessons,classLessons,onAddTeacher,onDelete
 function TeacherModal({teacher,onSave,onClose}) {
   const [form,setForm]=useState(teacher||{name:"",email:"",password:"",phone:""});
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
-  const handleSave=async()=>{
-    if(!form.name||!form.email)return;
-    if(form.password&&form.password.length<64){
-      // La password è stata inserita in chiaro: la cifriamo prima di salvare
-      const hashed=await hashPassword(form.password);
-      onSave({...form,password:hashed});
-    } else {
-      onSave(form);
-    }
-  };
   return (<Overlay onClose={onClose}><h2 style={S.modalTitle}>{teacher?"Modifica Insegnante":"Nuovo Insegnante"}</h2>
     <div style={S.field}><label style={S.label}>Nome</label><input style={S.input} value={form.name} onChange={e=>set("name",e.target.value)}/></div>
     <div style={S.field}><label style={S.label}>Email</label><input style={S.input} type="email" value={form.email} onChange={e=>set("email",e.target.value)}/></div>
     <div style={S.fieldRow}>
-      <div style={S.field}><label style={S.label}>Password</label><input style={S.input} type="password" value={form.password} onChange={e=>set("password",e.target.value)} placeholder={teacher?"Lascia vuoto per non cambiare":""}/></div>
+      <div style={S.field}><label style={S.label}>Password</label><input style={S.input} value={form.password} onChange={e=>set("password",e.target.value)}/></div>
       <div style={S.field}><label style={S.label}>Telefono</label><input style={S.input} value={form.phone||""} onChange={e=>set("phone",e.target.value)} placeholder="347-0000000"/></div>
     </div>
-    <div style={S.modalActions}><button style={S.btnSecondary} onClick={onClose}>Annulla</button><button style={{...S.btnPrimary,width:"auto"}} disabled={!form.name||!form.email} onClick={handleSave}>{teacher?"Salva":"Aggiungi"}</button></div>
+    <div style={S.modalActions}><button style={S.btnSecondary} onClick={onClose}>Annulla</button><button style={{...S.btnPrimary,width:"auto"}} disabled={!form.name||!form.email} onClick={()=>onSave(form)}>{teacher?"Salva":"Aggiungi"}</button></div>
   </Overlay>);
 }
 
