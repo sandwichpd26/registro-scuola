@@ -107,7 +107,6 @@ export default function App() {
         db.getClassLessons(),
         db.getNotes(user.id),
       ]);
-      const todayStr=new Date().toISOString().split("T")[0];
       // Usa package_used dal DB così com'è — è già aggiornato manualmente
       // pkg_offset serve a refreshPackage per aggiungere nuove lezioni senza perdere il valore base
       const recalcStudents=st.map(s=>({...s,pkg_offset:s.package_used||0,package_used:s.package_used||0}));
