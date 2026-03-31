@@ -442,12 +442,15 @@ function Sidebar({user,page,setPage,isAdmin,onLogout,onProfile,archivedCount,tra
 function HomePage({user,students,lessons,classLessons,classes,teachers,setPage,isAdmin,seenHomework,setSeenHomework,reviewHomework,setReviewHomework}) {
   const [dashFilter,setDashFilter]=useState("today");const [dashDetail,setDashDetail]=useState(null);const [hwPanel,setHwPanel]=useState(false);
   const active=students.filter(s=>s.active);
-  const allHomework=useMemo(()=>lessons.filter(l=>l.homework&&l.homework.trim()!==""),[lessons]);
+  // Compiti visibili per 7 giorni dalla data della lezione
+  const sevenDaysAgo=new Date(); sevenDaysAgo.setDate(sevenDaysAgo.getDate()-7);
+  const sevenDaysAgoStr=sevenDaysAgo.toISOString().split("T")[0];
+  const allHomework=useMemo(()=>lessons.filter(l=>l.homework&&l.homework.trim()!==""&&l.date>=sevenDaysAgoStr),[lessons,sevenDaysAgoStr]);
+  // Unseen = non visti O da rileggere
   const unseenHw=useMemo(()=>allHomework.filter(l=>!seenHomework.includes(l.id)||reviewHomework.includes(l.id)),[allHomework,seenHomework,reviewHomework]);
-  const markAllSeen=()=>{
-    const ids=unseenHw.map(l=>l.id);
-    const newSeen=[...new Set([...seenHomework,...ids])];
-    const newReview=reviewHomework.filter(id=>!ids.includes(id));
+  const markSeen=(id)=>{
+    const newSeen=[...new Set([...seenHomework,id])];
+    const newReview=reviewHomework.filter(x=>x!==id);
     setSeenHomework(newSeen);setReviewHomework(newReview);
     try{localStorage.setItem("seen_homework",JSON.stringify(newSeen));localStorage.setItem("review_homework",JSON.stringify(newReview));}catch{}
   };
@@ -456,7 +459,8 @@ function HomePage({user,students,lessons,classLessons,classes,teachers,setPage,i
     setReviewHomework(newReview);
     try{localStorage.setItem("review_homework",JSON.stringify(newReview));}catch{}
   };
-  const openHwPanel=()=>{setHwPanel(true);markAllSeen();};
+  // Non marca come visti all'apertura — l'utente decide
+  const openHwPanel=()=>{setHwPanel(true);};
   const myL=isAdmin?lessons:lessons.filter(l=>l.teacher_id===user.id);
   const todayStr=today();
   const weekStart=useMemo(()=>{const d=new Date();d.setHours(0,0,0,0);const day=d.getDay();d.setDate(d.getDate()-(day===0?6:day-1));return d.toISOString().split("T")[0];},[]);
@@ -516,14 +520,14 @@ function HomePage({user,students,lessons,classLessons,classes,teachers,setPage,i
       </table></div>
     </div>
     {dashDetail&&<StudentDetailModal student={dashDetail} lessons={lessons.filter(l=>l.student_id===dashDetail.id)} onClose={()=>setDashDetail(null)}/>}
-    {hwPanel&&isAdmin&&<HomeworkPanel lessons={unseenHw} students={students} teachers={teachers} onMarkReview={markReview} onClose={()=>setHwPanel(false)}/>}
+    {hwPanel&&isAdmin&&<HomeworkPanel lessons={unseenHw} students={students} teachers={teachers} onMarkReview={markReview} onMarkSeen={markSeen} onClose={()=>setHwPanel(false)}/>}
   </div>);
 }
 
-function HomeworkPanel({lessons,students,teachers,onMarkReview,onClose}) {
+function HomeworkPanel({lessons,students,teachers,onMarkReview,onMarkSeen,onClose}) {
   const sorted=[...lessons].sort((a,b)=>b.date.localeCompare(a.date));
   return (<Overlay onClose={onClose} wide>
-    <h2 style={S.modalTitle}>📝 Compiti assegnati</h2>
+    <h2 style={S.modalTitle}>📝 Compiti assegnati — ultimi 7 giorni</h2>
     {sorted.length===0
       ? <div style={{textAlign:"center",padding:"40px 0",color:"#9ca3af"}}><div style={{fontSize:36,marginBottom:8}}>✅</div><div>Nessun compito da vedere</div></div>
       : <div style={{display:"flex",flexDirection:"column",gap:10,maxHeight:"60vh",overflowY:"auto"}}>
@@ -541,7 +545,10 @@ function HomeworkPanel({lessons,students,teachers,onMarkReview,onClose}) {
                   {l.topic&&<span>📖 {l.topic}</span>}
                 </div>
               </div>
-              <button onClick={()=>onMarkReview(l.id)} style={{flexShrink:0,background:"#fef3c7",border:"1px solid #fcd34d",borderRadius:8,padding:"5px 10px",fontSize:12,fontWeight:600,color:"#92400e",cursor:"pointer",whiteSpace:"nowrap"}}>⭐ Da rivedere</button>
+              <div style={{display:"flex",flexDirection:"column",gap:6,flexShrink:0}}>
+                <button onClick={()=>onMarkReview(l.id)} style={{background:"#fef3c7",border:"1px solid #fcd34d",borderRadius:8,padding:"5px 10px",fontSize:12,fontWeight:600,color:"#92400e",cursor:"pointer",whiteSpace:"nowrap"}}>⭐ Da rileggere</button>
+                <button onClick={()=>onMarkSeen(l.id)} style={{background:"#f0fdf4",border:"1px solid #86efac",borderRadius:8,padding:"5px 10px",fontSize:12,fontWeight:600,color:"#166534",cursor:"pointer",whiteSpace:"nowrap"}}>✓ Visto</button>
+              </div>
             </div>);
           })}
         </div>
