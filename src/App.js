@@ -26,15 +26,18 @@ const fmtDate  = d => { if(!d)return""; const [y,m,dd]=d.split("-"); return `${d
 const LEVELS   = Array.from({length:50},(_,i)=>i+1);
 const DURATIONS= [30,45,60,90,120];
 const THEMES = {
-  indigo:  {name:"Indigo",     primary:"#6366f1", sidebar:"#312e81"},
-  violet:  {name:"Viola",      primary:"#7c3aed", sidebar:"#4c1d95"},
-  blue:    {name:"Blu",        primary:"#2563eb", sidebar:"#1e3a8a"},
-  teal:    {name:"Verde acqua",primary:"#0d9488", sidebar:"#115e59"},
-  green:   {name:"Verde",      primary:"#16a34a", sidebar:"#166534"},
-  pink:    {name:"Rosa",       primary:"#ec4899", sidebar:"#831843"},
-  rosso:   {name:"Rosso",      primary:"#e11d48", sidebar:"#881337"},
-  orange:  {name:"Arancione",  primary:"#ea580c", sidebar:"#7c2d12"},
-  slate:   {name:"Grigio",     primary:"#475569", sidebar:"#1e293b"},
+  // Pastello
+  lavanda:  {name:"Lavanda",    primary:"#7c6af7", sidebar:"#ede9fe", sidebarText:"#4c1d95", dark:false},
+  celeste:  {name:"Celeste",    primary:"#38bdf8", sidebar:"#e0f2fe", sidebarText:"#0c4a6e", dark:false},
+  menta:    {name:"Menta",      primary:"#34d399", sidebar:"#d1fae5", sidebarText:"#064e3b", dark:false},
+  pesca:    {name:"Pesca",      primary:"#fb923c", sidebar:"#ffedd5", sidebarText:"#7c2d12", dark:false},
+  rosa:     {name:"Rosa",       primary:"#f472b6", sidebar:"#fce7f3", sidebarText:"#831843", dark:false},
+  giallo:   {name:"Giallo",     primary:"#fbbf24", sidebar:"#fef9c3", sidebarText:"#713f12", dark:false},
+  lilla:    {name:"Lilla",      primary:"#c084fc", sidebar:"#f3e8ff", sidebarText:"#581c87", dark:false},
+  // Scuri
+  notte:    {name:"Notte",      primary:"#6366f1", sidebar:"#0f172a", sidebarText:"#e2e8f0", dark:true},
+  navy:     {name:"Navy",       primary:"#3b82f6", sidebar:"#1e3a5f", sidebarText:"#e0f2fe", dark:true},
+  bosco:    {name:"Bosco",      primary:"#16a34a", sidebar:"#14532d", sidebarText:"#dcfce7", dark:true},
 };
 const T_COLORS = ["#6366f1","#8b5cf6","#a855f7","#d946ef","#ec4899","#ef4444","#e11d48","#f97316","#f59e0b","#eab308","#84cc16","#22c55e","#10b981","#14b8a6","#06b6d4","#0ea5e9","#3b82f6","#0284c7","#0891b2","#059669","#15803d","#65a30d","#ca8a04","#dc2626","#7c3aed","#b45309","#78716c","#64748b","#475569","#1e293b"];
 
@@ -131,13 +134,13 @@ export default function App() {
   const allActiveStudents = myStudents.filter(s=>s.active&&!s.deleted);
   const archivedStudents = isAdmin ? students.filter(s=>!s.active&&!s.deleted) : [];
   const trashedStudents  = isAdmin ? students.filter(s=>s.deleted) : [];
-  const safePage         = (!isAdmin&&["archive","admin","trash"].includes(page))?"home":page;
+  const safePage         = (!isAdmin&&["archive","admin","trash","students","report_s"].includes(page))?"home":page;
   const [profileModal,setProfileModal]=useState(false);
   const [seenHomework,setSeenHomework]=useState(()=>{try{return JSON.parse(localStorage.getItem("seen_homework")||"[]");}catch{return[];}});
   const [reviewHomework,setReviewHomework]=useState(()=>{try{return JSON.parse(localStorage.getItem("review_homework")||"[]");}catch{return[];}});
-  const [themeKey,setThemeKey]=useState(()=>localStorage.getItem("app_theme")||"indigo");
+  const [themeKey,setThemeKey]=useState("notte");
   const th=THEMES[themeKey]||THEMES.indigo;
-  const changeTheme=(key)=>{setThemeKey(key);localStorage.setItem("app_theme",key);};
+  const changeTheme=(key)=>{setThemeKey(key);try{localStorage.setItem(`app_theme_${currentUser?.id||"default"}`,key);}catch{}};
   const myClasses        = currentUser?(isAdmin?classes:classes.filter(c=>c.teacher_id===currentUser.id)):[];
 
   // ── CRUD — ogni operazione aggiorna lo state ottimisticamente
@@ -253,6 +256,10 @@ export default function App() {
     try { await db.upsertLesson(obj); }
     catch(e) { setLessons(lessons); throw e; }
   };
+  const markHomeworkUnseen = (id) => {
+    setSeenHomework(p=>{const n=p.filter(x=>x!==id);try{localStorage.setItem("seen_homework",JSON.stringify(n));}catch{}return n;});
+    setReviewHomework(p=>{const n=p.filter(x=>x!==id);try{localStorage.setItem("review_homework",JSON.stringify(n));}catch{}return n;});
+  };
   const updateLesson = async l => {
     setLessons(p=>p.map(x=>x.id===l.id?l:x));
     try { await db.upsertLesson(l); showToast("Lezione aggiornata"); }
@@ -324,7 +331,7 @@ export default function App() {
   if (!currentUser) return (
     <LoginScreen
       teachers={teachers}
-      onLogin={async u => { setCurrentUser(u); setPage("home"); await loadAll(u); }}
+      onLogin={async u => { setCurrentUser(u); setPage("home"); try{const saved=localStorage.getItem(`app_theme_${u.id}`);if(saved&&THEMES[saved])setThemeKey(saved);}catch{} await loadAll(u); }}
     />
   );
 
@@ -430,11 +437,13 @@ function LoginScreen({teachers,onLogin}) {
 
 // ── SIDEBAR — identica all'originale ─────────────────────────────
 function Sidebar({user,page,setPage,isAdmin,onLogout,onProfile,archivedCount,trashedCount,alertCount,theme,themeKey,onChangeTheme}) {
-  const items=[{id:"home",icon:"🏠",label:"Dashboard"},{id:"students",icon:"👤",label:"Studenti & Classi"},{id:"lessons",icon:"📚",label:"Lezioni Individuali"},{id:"classes",icon:"👥",label:"Lezioni di Classe"},{id:"calendar",icon:"📅",label:"Calendario"},{id:"reports",icon:"📊",label:"Report",badge:alertCount>0?`⚠️ ${alertCount}`:null,warn:true},{id:"report_s",icon:"📋",label:"Report Studenti"},...(isAdmin?[{id:"archive",icon:"🗄️",label:"Archivio",badge:archivedCount>0?archivedCount:null},{id:"trash",icon:"🗑️",label:"Cestino",badge:trashedCount>0?trashedCount:null},{id:"admin",icon:"⚙️",label:"Amministrazione"}]:[])];
+  const teacherItems=[{id:"home",icon:"🏠",label:"Dashboard"},{id:"lessons",icon:"📚",label:"Lezioni Individuali"},{id:"classes",icon:"👥",label:"Lezioni di Classe"},{id:"calendar",icon:"📅",label:"Calendario"},{id:"reports",icon:"📊",label:"Report"}];
+  const adminItems=[{id:"home",icon:"🏠",label:"Dashboard"},{id:"students",icon:"👤",label:"Studenti & Classi"},{id:"lessons",icon:"📚",label:"Lezioni Individuali"},{id:"classes",icon:"👥",label:"Lezioni di Classe"},{id:"calendar",icon:"📅",label:"Calendario"},{id:"reports",icon:"📊",label:"Report",badge:alertCount>0?`⚠️ ${alertCount}`:null,warn:true},{id:"report_s",icon:"📋",label:"Report Studenti"},{id:"archive",icon:"🗄️",label:"Archivio",badge:archivedCount>0?archivedCount:null},{id:"trash",icon:"🗑️",label:"Cestino",badge:trashedCount>0?trashedCount:null},{id:"admin",icon:"⚙️",label:"Amministrazione"}];
+  const items=isAdmin?adminItems:teacherItems;
   return (<aside style={S.sidebar}>
-    <div style={S.sidebarTop}><div style={S.sidebarLogo}>🎓</div><div><div style={S.sidebarBrand}>Sandwich Institute</div><div style={{color:"#475569",fontSize:10}}>Registro</div></div></div>
-    <nav style={{...S.nav,background:theme?.sidebar||"#0f172a"}}>{items.map(item=>(<button key={item.id} className="nav-item" style={{...S.navItem,...(page===item.id?{...S.navItemActive,background:theme?.primary||"#6366f1"}:{})}} onClick={()=>setPage(item.id)}><span style={S.navIcon}>{item.icon}</span><span style={{flex:1}}>{item.label}</span>{item.badge&&<span style={{...S.badge,...(item.warn?{background:"#ef444420",color:"#ef4444"}:{})}}>{item.badge}</span>}</button>))}</nav>
-    <div style={S.sidebarBottom}><div style={{...S.userChip,cursor:"pointer"}} onClick={onProfile}><div style={S.avatar}>{user.name[0]}</div><div><div style={S.userName}>{user.name}</div><div style={S.userRole}>{user.role==="admin"?"Amministratore":"Insegnante"}</div></div></div><button style={{...S.logoutBtn,marginBottom:4}} onClick={onProfile}>👤 Profilo</button><button style={S.logoutBtn} onClick={onLogout}>Esci →</button></div>
+    <div style={{...S.sidebarTop,background:theme?.sidebar||"#0f172a"}}><div style={S.sidebarLogo}>🎓</div><div><div style={{...S.sidebarBrand,color:theme?.sidebarText||"white"}}>Sandwich Institute</div><div style={{color:theme?.sidebarText||"#94a3b8",fontSize:10,opacity:0.6}}>Registro</div></div></div>
+    <nav style={{...S.nav,background:theme?.sidebar||"#0f172a"}}>{items.map(item=>(<button key={item.id} className="nav-item" style={{...S.navItem,color:theme?.sidebarText||(theme?.dark===false?"#374151":"#94a3b8"),...(page===item.id?{...S.navItemActive,background:theme?.primary||"#6366f1",color:"white"}:{})}} onClick={()=>setPage(item.id)}><span style={S.navIcon}>{item.icon}</span><span style={{flex:1}}>{item.label}</span>{item.badge&&<span style={{...S.badge,...(item.warn?{background:"#ef444420",color:"#ef4444"}:{})}}>{item.badge}</span>}</button>))}</nav>
+    <div style={{...S.sidebarBottom,background:theme?.sidebar||"#0f172a",borderTop:`1px solid ${theme?.dark===false?"rgba(0,0,0,0.1)":"#1e293b"}`}}><div style={{...S.userChip,cursor:"pointer"}} onClick={onProfile}><div style={S.avatar}>{user.name[0]}</div><div><div style={{...S.userName,color:theme?.sidebarText||"white"}}>{user.name}</div><div style={{...S.userRole,color:theme?.sidebarText||"#64748b",opacity:0.7}}>{user.role==="admin"?"Amministratore":"Insegnante"}</div></div></div><button style={{...S.logoutBtn,marginBottom:4,color:theme?.sidebarText||"#64748b",borderColor:theme?.dark===false?"rgba(0,0,0,0.15)":"#1e293b"}} onClick={onProfile}>👤 Profilo</button><button style={{...S.logoutBtn,color:theme?.sidebarText||"#64748b",borderColor:theme?.dark===false?"rgba(0,0,0,0.15)":"#1e293b"}} onClick={onLogout}>Esci →</button></div>
   </aside>);
 }
 
@@ -448,6 +457,7 @@ function HomePage({user,students,lessons,classLessons,classes,teachers,setPage,i
   const allHomework=useMemo(()=>lessons.filter(l=>l.homework&&l.homework.trim()!==""&&l.date>=sevenDaysAgoStr),[lessons,sevenDaysAgoStr]);
   // Unseen = non visti O da rileggere
   const unseenHw=useMemo(()=>allHomework.filter(l=>!seenHomework.includes(l.id)||reviewHomework.includes(l.id)),[allHomework,seenHomework,reviewHomework]);
+  const seenHw=useMemo(()=>allHomework.filter(l=>seenHomework.includes(l.id)&&!reviewHomework.includes(l.id)),[allHomework,seenHomework,reviewHomework]);
   const markSeen=(id)=>{
     const newSeen=[...new Set([...seenHomework,id])];
     const newReview=reviewHomework.filter(x=>x!==id);
@@ -520,37 +530,41 @@ function HomePage({user,students,lessons,classLessons,classes,teachers,setPage,i
       </table></div>
     </div>
     {dashDetail&&<StudentDetailModal student={dashDetail} lessons={lessons.filter(l=>l.student_id===dashDetail.id)} onClose={()=>setDashDetail(null)}/>}
-    {hwPanel&&isAdmin&&<HomeworkPanel lessons={unseenHw} students={students} teachers={teachers} onMarkReview={markReview} onMarkSeen={markSeen} onClose={()=>setHwPanel(false)}/>}
+    {hwPanel&&isAdmin&&<HomeworkPanel lessons={unseenHw} seenLessons={seenHw} students={students} teachers={teachers} onMarkReview={markReview} onMarkSeen={markSeen} onClose={()=>setHwPanel(false)}/>}
   </div>);
 }
 
-function HomeworkPanel({lessons,students,teachers,onMarkReview,onMarkSeen,onClose}) {
-  const sorted=[...lessons].sort((a,b)=>b.date.localeCompare(a.date));
+function HomeworkPanel({lessons,seenLessons,students,teachers,onMarkReview,onMarkSeen,onClose}) {
+  const unsorted=[...lessons].sort((a,b)=>b.date.localeCompare(a.date));
+  const sortedSeen=[...seenLessons].sort((a,b)=>b.date.localeCompare(a.date));
+  const HwCard=({l,seen})=>{
+    const st=students.find(s=>s.id===l.student_id);
+    const t=teachers.find(t=>t.id===l.teacher_id);
+    return(<div style={{background:seen?"#f8fafc":"#fffbeb",borderRadius:12,padding:"14px 16px",border:`1px solid ${seen?"#e2e8f0":"#fde68a"}`,display:"flex",gap:12,alignItems:"flex-start",opacity:seen?0.7:1}}>
+      <div style={{fontSize:24}}>{seen?"📋":"📝"}</div>
+      <div style={{flex:1}}>
+        <div style={{fontWeight:700,fontSize:14,marginBottom:2,color:seen?"#6b7280":"#0f172a"}}>{st?.name||"—"}{seen&&<span style={{marginLeft:8,fontSize:11,background:"#e2e8f0",borderRadius:10,padding:"1px 8px",fontWeight:500}}>già visto</span>}</div>
+        <div style={{fontSize:13,color:seen?"#9ca3af":"#374151",marginBottom:4}}>{l.homework}</div>
+        <div style={{fontSize:11,color:"#9ca3af",display:"flex",gap:10}}>
+          <span>📅 {fmtDate(l.date)}</span>
+          <span>🎓 {t?.name||"—"}</span>
+          {l.topic&&<span>📖 {l.topic}</span>}
+        </div>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:6,flexShrink:0}}>
+        {!seen&&<button onClick={()=>onMarkSeen(l.id)} style={{background:"#f0fdf4",border:"1px solid #86efac",borderRadius:8,padding:"5px 10px",fontSize:12,fontWeight:600,color:"#166534",cursor:"pointer",whiteSpace:"nowrap"}}>✓ Visto</button>}
+        <button onClick={()=>onMarkReview(l.id)} style={{background:"#fef3c7",border:"1px solid #fcd34d",borderRadius:8,padding:"5px 10px",fontSize:12,fontWeight:600,color:"#92400e",cursor:"pointer",whiteSpace:"nowrap"}}>⭐ Da rileggere</button>
+      </div>
+    </div>);
+  };
   return (<Overlay onClose={onClose} wide>
     <h2 style={S.modalTitle}>📝 Compiti assegnati — ultimi 7 giorni</h2>
-    {sorted.length===0
-      ? <div style={{textAlign:"center",padding:"40px 0",color:"#9ca3af"}}><div style={{fontSize:36,marginBottom:8}}>✅</div><div>Nessun compito da vedere</div></div>
+    {unsorted.length===0&&sortedSeen.length===0
+      ? <div style={{textAlign:"center",padding:"40px 0",color:"#9ca3af"}}><div style={{fontSize:36,marginBottom:8}}>✅</div><div>Nessun compito nell'ultima settimana</div></div>
       : <div style={{display:"flex",flexDirection:"column",gap:10,maxHeight:"60vh",overflowY:"auto"}}>
-          {sorted.map(l=>{
-            const st=students.find(s=>s.id===l.student_id);
-            const t=teachers.find(t=>t.id===l.teacher_id);
-            return(<div key={l.id} style={{background:"#fffbeb",borderRadius:12,padding:"14px 16px",border:"1px solid #fde68a",display:"flex",gap:12,alignItems:"flex-start"}}>
-              <div style={{fontSize:24}}>📝</div>
-              <div style={{flex:1}}>
-                <div style={{fontWeight:700,fontSize:14,marginBottom:2}}>{st?.name||"—"}</div>
-                <div style={{fontSize:13,color:"#374151",marginBottom:4}}>{l.homework}</div>
-                <div style={{fontSize:11,color:"#9ca3af",display:"flex",gap:10}}>
-                  <span>📅 {fmtDate(l.date)}</span>
-                  <span>🎓 {t?.name||"—"}</span>
-                  {l.topic&&<span>📖 {l.topic}</span>}
-                </div>
-              </div>
-              <div style={{display:"flex",flexDirection:"column",gap:6,flexShrink:0}}>
-                <button onClick={()=>onMarkReview(l.id)} style={{background:"#fef3c7",border:"1px solid #fcd34d",borderRadius:8,padding:"5px 10px",fontSize:12,fontWeight:600,color:"#92400e",cursor:"pointer",whiteSpace:"nowrap"}}>⭐ Da rileggere</button>
-                <button onClick={()=>onMarkSeen(l.id)} style={{background:"#f0fdf4",border:"1px solid #86efac",borderRadius:8,padding:"5px 10px",fontSize:12,fontWeight:600,color:"#166534",cursor:"pointer",whiteSpace:"nowrap"}}>✓ Visto</button>
-              </div>
-            </div>);
-          })}
+          {unsorted.map(l=><HwCard key={l.id} l={l} seen={false}/>)}
+          {sortedSeen.length>0&&unsorted.length>0&&<div style={{borderTop:"1px solid #e2e8f0",margin:"8px 0",paddingTop:8,fontSize:12,color:"#9ca3af",fontWeight:600}}>— Già visti —</div>}
+          {sortedSeen.map(l=><HwCard key={l.id} l={l} seen={true}/>)}
         </div>
     }
     <div style={{marginTop:16,textAlign:"right"}}><button style={S.btnSecondary} onClick={onClose}>Chiudi</button></div>
@@ -697,7 +711,7 @@ function LessonsPage({user,students,lessons,teachers,isAdmin,onAdd,onAddRecurrin
     <div style={S.pageHeader}><div><h1 style={S.pageTitle}>Lezioni Individuali</h1><p style={S.pageSub}>{myL.length} lezioni registrate</p></div>
       <div style={{display:"flex",gap:8,alignItems:"center"}}>
         <div style={{display:"flex",gap:4,background:"#f1f5f9",borderRadius:8,padding:3}}>{[["day","Per giorno"],["table","Tabella"]].map(([v,l])=><button key={v} onClick={()=>setViewMode(v)} style={{padding:"5px 12px",borderRadius:6,border:"none",cursor:"pointer",fontWeight:600,fontSize:12,background:viewMode===v?"white":"transparent",color:viewMode===v?"#374151":"#9ca3af",boxShadow:viewMode===v?"0 1px 3px rgba(0,0,0,0.1)":"none"}}>{l}</button>)}</div>
-        <button style={{...S.btnPrimary,width:"auto"}} onClick={()=>setModal("add")}>+ Nuova Lezione</button>
+        {isAdmin&&<button style={{...S.btnPrimary,width:"auto"}} onClick={()=>setModal("add")}>+ Nuova Lezione</button>}
       </div>
     </div>
     <div style={{display:"flex",gap:10,marginBottom:20,flexWrap:"wrap",alignItems:"center"}}>
@@ -732,7 +746,7 @@ function LessonsPage({user,students,lessons,teachers,isAdmin,onAdd,onAddRecurrin
                     <Pill ok={l.present}/>
                     <LessonCounter current={lIdx(l)} total={st.package_total||0}/>
                     <button style={{...S.btnSm,padding:"3px 10px",fontSize:11}} onClick={()=>setDetailSt({student:st,lesson:l})}>Dettagli</button>
-                    <div style={{display:"flex",gap:4}}><button style={S.iconBtn} onClick={()=>setModal(l)}>✏️</button><button style={S.iconBtn} onClick={()=>setConfirm({id:l.id,sid:l.student_id})}>🗑️</button></div>
+                    {isAdmin&&<div style={{display:"flex",gap:4}}><button style={S.iconBtn} onClick={()=>setModal(l)}>✏️</button><button style={S.iconBtn} onClick={()=>setConfirm({id:l.id,sid:l.student_id})}>🗑️</button></div>}
                   </div>);
                 })}
               </div>}
@@ -742,7 +756,7 @@ function LessonsPage({user,students,lessons,teachers,isAdmin,onAdd,onAddRecurrin
       ):(
         <div style={S.tableWrap}><table style={S.table}>
           <thead><tr><th style={S.th}>N°</th><th style={S.th}>Data</th><th style={S.th}>Ora</th><th style={S.th}>Min</th><th style={S.th}>Studente</th><th style={S.th}>Argomento</th><th style={S.th}>Compiti</th><th style={S.th}>Modalità</th><th style={S.th}>Presenza</th><th style={S.th}></th></tr></thead>
-          <tbody>{sorted.map(l=>{const st=students.find(s=>s.id===l.student_id);if(!st)return null;return(<tr key={l.id} style={S.tr}><td style={S.td}><LessonCounter current={lIdx(l)} total={st.package_total||0}/></td><td style={S.td}>{fmtDate(l.date)}</td><td style={S.td}><span style={S.timeBadge}>{l.time||"—"}</span></td><td style={S.td}><span style={{fontSize:12,color:"#6b7280"}}>{l.duration}m</span></td><td style={S.td}><strong>{st.name}</strong></td><td style={{...S.td,maxWidth:150,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.topic}</td><td style={{...S.td,maxWidth:120,color:"#6b7280",fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.homework||"—"}</td><td style={S.td}><ModeBadge mode={l.mode} zoom={l.zoom_account}/></td><td style={S.td}><Pill ok={l.present}/></td><td style={S.td}><div style={{display:"flex",gap:4}}><button style={S.iconBtn} onClick={()=>setModal(l)}>✏️</button><button style={S.iconBtn} onClick={()=>setConfirm({id:l.id,sid:l.student_id})}>🗑️</button></div></td></tr>);})}</tbody>
+          <tbody>{sorted.map(l=>{const st=students.find(s=>s.id===l.student_id);if(!st)return null;return(<tr key={l.id} style={S.tr}><td style={S.td}><LessonCounter current={lIdx(l)} total={st.package_total||0}/></td><td style={S.td}>{fmtDate(l.date)}</td><td style={S.td}><span style={S.timeBadge}>{l.time||"—"}</span></td><td style={S.td}><span style={{fontSize:12,color:"#6b7280"}}>{l.duration}m</span></td><td style={S.td}><strong>{st.name}</strong></td><td style={{...S.td,maxWidth:150,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.topic}</td><td style={{...S.td,maxWidth:120,color:"#6b7280",fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.homework||"—"}</td><td style={S.td}><ModeBadge mode={l.mode} zoom={l.zoom_account}/></td><td style={S.td}><Pill ok={l.present}/></td><td style={S.td}>{isAdmin&&<div style={{display:"flex",gap:4}}><button style={S.iconBtn} onClick={()=>setModal(l)}>✏️</button><button style={S.iconBtn} onClick={()=>setConfirm({id:l.id,sid:l.student_id})}>🗑️</button></div>}</td></tr>);})}</tbody>
         </table></div>
       )
     )}
@@ -806,7 +820,7 @@ function ClassesPage({user,students,classes,classLessons,teachers,isAdmin,onAddC
       <button style={{...S.btnSecondary,width:"auto",marginBottom:20}} onClick={()=>setSel(null)}>← Tutte le Classi</button>
       <div style={S.pageHeader}>
         <div><h1 style={S.pageTitle}>{activeClass?.name}</h1><p style={S.pageSub}>{classStudents.length} studenti · {activeClass?.schedule}</p></div>
-        <div style={{display:"flex",alignItems:"center",gap:12}}><div style={{background:"#f0fdf4",borderRadius:10,padding:"8px 16px",fontSize:13,color:"#166534",fontWeight:600}}>📦 {activeClass?.package_used}/{activeClass?.package_total} · {pkgRemaining(activeClass)} rimaste</div><button style={{...S.btnPrimary,width:"auto"}} onClick={()=>setLM("add")}>+ Nuova Lezione</button></div>
+        <div style={{display:"flex",alignItems:"center",gap:12}}><div style={{background:"#f0fdf4",borderRadius:10,padding:"8px 16px",fontSize:13,color:"#166534",fontWeight:600}}>📦 {activeClass?.package_used}/{activeClass?.package_total} · {pkgRemaining(activeClass)} rimaste</div>{isAdmin&&<button style={{...S.btnPrimary,width:"auto"}} onClick={()=>setLM("add")}>+ Nuova Lezione</button>}</div>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"240px 1fr",gap:24}}>
         <div><h2 style={S.sectionTitle}>Studenti ({classStudents.length})</h2>
@@ -833,7 +847,7 @@ function ClassesPage({user,students,classes,classLessons,teachers,isAdmin,onAddC
                             {lesson.homework&&<div style={{fontSize:12,color:"#6b7280",marginTop:2}}>📝 {lesson.homework}</div>}
                           </div>
                         </div>
-                        <div style={{display:"flex",gap:6}}><button style={S.iconBtn} onClick={()=>setLM(lesson)}>✏️</button><button style={S.iconBtn} onClick={()=>setConfirm({type:"classLesson",id:lesson.id,cid:lesson.class_id})}>🗑️</button></div>
+                        {isAdmin&&<div style={{display:"flex",gap:6}}><button style={S.iconBtn} onClick={()=>setLM(lesson)}>✏️</button><button style={S.iconBtn} onClick={()=>setConfirm({type:"classLesson",id:lesson.id,cid:lesson.class_id})}>🗑️</button></div>}
                       </div>
                       <div style={{borderTop:"1px solid #f1f5f9",paddingTop:8}}>
                         <div style={{fontSize:11,fontWeight:600,color:"#9ca3af",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.05em"}}>Presenze: {att}/{classStudents.length}</div>
@@ -1111,7 +1125,7 @@ function ReportsPage({user,students,classes,lessons,classLessons,teachers,isAdmi
   const allObjs=[...students.filter(s=>s.active),...classes];
   const monthlyHours=useMemo(()=>{
     const now=new Date();const ym=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
-    return teachers.filter(t=>t.role==="teacher").map(t=>{
+    return teachers.filter(t=>t.role==="teacher"&&(isAdmin||t.id===user.id)).map(t=>{
       const im=lessons.filter(l=>l.teacher_id===t.id&&l.date.startsWith(ym)).reduce((s,l)=>s+(l.duration||0),0);
       const cm=classLessons.filter(l=>l.teacher_id===t.id&&l.date.startsWith(ym)).reduce((s,l)=>s+(l.duration||0),0);
       const total=im+cm;return{teacher:t,mins:total,hours:Math.floor(total/60),rem:total%60};
@@ -1132,12 +1146,13 @@ function ReportsPage({user,students,classes,lessons,classLessons,teachers,isAdmi
         {monthlyHours.every(x=>x.mins===0)&&<div style={S.emptySmall}>Nessuna lezione registrata questo mese</div>}
       </div>
     </div>
-    {isAdmin&&<div style={{display:"flex",gap:12,marginBottom:20}}><select style={{...S.input,width:"auto",minWidth:200}} value={fT} onChange={e=>setFT(e.target.value)}><option value="">Tutti gli insegnanti</option>{teachers.filter(t=>t.role==="teacher").map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></div>}
-    <div style={{display:"flex",gap:8,marginBottom:20}}>{[["students","👤 Studenti"],["classes","👥 Classi"]].map(([id,label])=>(<button key={id} onClick={()=>setTab(id)} style={{padding:"8px 20px",borderRadius:10,border:"none",cursor:"pointer",fontWeight:600,fontSize:14,background:tab===id?"#6366f1":"#f1f5f9",color:tab===id?"white":"#374151"}}>{label}</button>))}</div>
-    {tab==="students"&&<div style={S.tableWrap}><table style={S.table}><thead><tr><th style={S.th}>Studente</th><th style={S.th}>Insegnante</th><th style={S.th}>Livello</th><th style={S.th}>Svolte</th><th style={S.th}>Rimaste</th><th style={S.th}>Tot.</th><th style={S.th}>Stato</th></tr></thead>
+    {isAdmin&&<><div style={{display:"flex",gap:12,marginBottom:20}}><select style={{...S.input,width:"auto",minWidth:200}} value={fT} onChange={e=>setFT(e.target.value)}><option value="">Tutti gli insegnanti</option>{teachers.filter(t=>t.role==="teacher").map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></div>
+    <div style={{display:"flex",gap:8,marginBottom:20}}>{[["students","👤 Studenti"],["classes","👥 Classi"]].map(([id,label])=>(<button key={id} onClick={()=>setTab(id)} style={{padding:"8px 20px",borderRadius:10,border:"none",cursor:"pointer",fontWeight:600,fontSize:14,background:tab===id?"#6366f1":"#f1f5f9",color:tab===id?"white":"#374151"}}>{label}</button>))}</div></>
+    }
+    {isAdmin&&tab==="students"&&<div style={S.tableWrap}><table style={S.table}><thead><tr><th style={S.th}>Studente</th><th style={S.th}>Insegnante</th><th style={S.th}>Livello</th><th style={S.th}>Svolte</th><th style={S.th}>Rimaste</th><th style={S.th}>Tot.</th><th style={S.th}>Stato</th></tr></thead>
       <tbody>{fS.map(s=>{const st=pkgStatus(s);const t=teachers.find(t=>t.id===s.teacher_id);return<tr key={s.id} style={S.tr}><td style={S.td}><strong>{s.name}</strong></td><td style={S.td}>{t?.name||"—"}</td><td style={S.td}><LevelBadge level={s.level}/></td><td style={S.td}><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontWeight:700}}>{s.package_used}</span><div style={{width:60,height:6,background:"#f1f5f9",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:`${Math.min(100,(s.package_used/s.package_total)*100)}%`,background:pkgColor(s),borderRadius:3}}/></div></div></td><td style={{...S.td,fontWeight:700,color:pkgRemaining(s)<=3?"#ef4444":"#10b981"}}>{pkgRemaining(s)}</td><td style={S.td}>{s.package_total}</td><td style={S.td}><span style={{padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:600,background:st.bg,color:st.color}}>{st.label}</span></td></tr>;})}
       </tbody></table></div>}
-    {tab==="classes"&&<div style={S.tableWrap}><table style={S.table}><thead><tr><th style={S.th}>Classe</th><th style={S.th}>Insegnante</th><th style={S.th}>Studenti</th><th style={S.th}>Svolte</th><th style={S.th}>Rimaste</th><th style={S.th}>Tot.</th><th style={S.th}>Stato</th></tr></thead>
+    {isAdmin&&tab==="classes"&&<div style={S.tableWrap}><table style={S.table}><thead><tr><th style={S.th}>Classe</th><th style={S.th}>Insegnante</th><th style={S.th}>Studenti</th><th style={S.th}>Svolte</th><th style={S.th}>Rimaste</th><th style={S.th}>Tot.</th><th style={S.th}>Stato</th></tr></thead>
       <tbody>{fC.map(c=>{const st=pkgStatus(c);const t=teachers.find(t=>t.id===c.teacher_id);return<tr key={c.id} style={S.tr}><td style={S.td}><strong>{c.name}</strong></td><td style={S.td}>{t?.name||"—"}</td><td style={S.td}>{(c.student_ids||[]).length}</td><td style={S.td}><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontWeight:700}}>{c.package_used}</span><div style={{width:60,height:6,background:"#f1f5f9",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:`${Math.min(100,(c.package_used/c.package_total)*100)}%`,background:pkgColor(c),borderRadius:3}}/></div></div></td><td style={{...S.td,fontWeight:700,color:pkgRemaining(c)<=3?"#ef4444":"#10b981"}}>{pkgRemaining(c)}</td><td style={S.td}>{c.package_total}</td><td style={S.td}><span style={{padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:600,background:st.bg,color:st.color}}>{st.label}</span></td></tr>;})}
       </tbody></table></div>}
   </div>);
