@@ -107,8 +107,7 @@ export default function App() {
         db.getClassLessons(),
         db.getNotes(user.id),
       ]);
-      // pkg_offset = lezioni pre-app = package_used_DB - lezioni nel calendario passate o di oggi
-      // Le lezioni future non vengono conteggiate nel package_used quindi non vanno sottratte
+      // pkg_offset = lezioni pre-app = package_used_DB - lezioni PASSATE nel calendario
       const todayStr=new Date().toISOString().split("T")[0];
       const recalcStudents=st.map(s=>{
         const pastCalCount=les.filter(l=>l.student_id===s.id&&l.date<=todayStr).length;
