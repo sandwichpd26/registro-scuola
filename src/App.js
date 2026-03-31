@@ -256,6 +256,7 @@ export default function App() {
     try { await db.upsertLesson(obj); }
     catch(e) { setLessons(lessons); throw e; }
   };
+  // eslint-disable-next-line no-unused-vars
   const markHomeworkUnseen = (id) => {
     setSeenHomework(p=>{const n=p.filter(x=>x!==id);try{localStorage.setItem("seen_homework",JSON.stringify(n));}catch{}return n;});
     setReviewHomework(p=>{const n=p.filter(x=>x!==id);try{localStorage.setItem("review_homework",JSON.stringify(n));}catch{}return n;});
