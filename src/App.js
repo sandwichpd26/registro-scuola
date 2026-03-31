@@ -1116,7 +1116,8 @@ function ReportsPage({user,students,classes,lessons,classLessons,teachers,isAdmi
       const cm=classLessons.filter(l=>l.teacher_id===t.id&&l.date.startsWith(ym)).reduce((s,l)=>s+(l.duration||0),0);
       const total=im+cm;return{teacher:t,mins:total,hours:Math.floor(total/60),rem:total%60};
     });
-  },[teachers,lessons,classLessons,isAdmin,user]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[teachers,lessons,classLessons]);
   return (<div style={S.page}>
     <div style={S.pageHeader}><div><h1 style={S.pageTitle}>📊 Report & Statistiche</h1><p style={S.pageSub}>Monitoraggio pacchetti, ore e lezioni</p></div></div>
     <div style={S.statsGrid}>{[{label:"Studenti attivi",value:students.filter(s=>s.active).length,icon:"👤",color:"#6366f1"},{label:"Pacchetti in scadenza",value:allObjs.filter(x=>pkgRemaining(x)<=3&&pkgRemaining(x)>0).length,icon:"⚠️",color:"#f59e0b"},{label:"Pacchetti esauriti",value:allObjs.filter(x=>pkgRemaining(x)<=0&&x.package_total>0).length,icon:"🔴",color:"#ef4444"},{label:"Lezioni totali",value:lessons.length+classLessons.length,icon:"📚",color:"#10b981"}].map((s,i)=>(<div key={i} style={S.statCard}><div style={{...S.statIcon,background:s.color+"20",color:s.color}}>{s.icon}</div><div style={S.statValue}>{s.value}</div><div style={S.statLabel}>{s.label}</div></div>))}</div>
