@@ -931,6 +931,26 @@ function CalendarPage({user,students,lessons,classLessons,classes,teachers,isAdm
   const findStudent = (eventSummary) => {
     const active=(allStudents||students).filter(s=>s.active&&!s.deleted);
     const titleLower=eventSummary.toLowerCase();
+    // 1. Cerca corrispondenza con nome completo
+    const full=active.find(s=>titleLower.includes(s.name.toLowerCase()));
+    if(full)return full;
+    // 2. Cerca corrispondenza con cognome (parola più lunga del nome)
+    const bySurname=active.find(s=>{
+      const parts=s.name.toLowerCase().split(" ");
+      const surname=parts[parts.length-1];
+      return surname.length>2&&titleLower.includes(surname);
+    });
+    if(bySurname)return bySurname;
+    // 3. Cerca nome + iniziale cognome (es. "andrea s" per Andrea Scuttari)
+    const byInitial=active.find(s=>{
+      const parts=s.name.toLowerCase().split(" ");
+      if(parts.length<2)return false;
+      const firstName=parts[0];
+      const initial=parts[parts.length-1][0];
+      return titleLower.includes(firstName)&&titleLower.includes(initial+".");
+    });
+    if(byInitial)return byInitial;
+    // 4. Solo nome (ultimo tentativo)
     return active.find(s=>s.name.toLowerCase().split(" ").filter(p=>p.length>2).some(p=>titleLower.includes(p)));
   };
   const syncGoogleCalendar = async () => {
