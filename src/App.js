@@ -107,12 +107,12 @@ export default function App() {
         db.getClassLessons(),
         db.getNotes(user.id),
       ]);
-      // package_used dal DB = lezioni pre-app + lezioni nel calendario (già aggiornato manualmente)
-      // pkg_offset = lezioni pre-app = package_used_DB - numero lezioni nel calendario
-      // lIdx usa pkg_offset per numerare correttamente le lezioni nel calendario
+      // pkg_offset = lezioni pre-app = package_used_DB - lezioni nel calendario passate o di oggi
+      // Le lezioni future non vengono conteggiate nel package_used quindi non vanno sottratte
+      const todayStr=new Date().toISOString().split("T")[0];
       const recalcStudents=st.map(s=>{
-        const calCount=les.filter(l=>l.student_id===s.id).length;
-        const offset=Math.max(0,(s.package_used||0)-calCount);
+        const pastCalCount=les.filter(l=>l.student_id===s.id&&l.date<=todayStr).length;
+        const offset=Math.max(0,(s.package_used||0)-pastCalCount);
         return {...s,pkg_offset:offset,package_used:s.package_used||0};
       });
       setStudents(recalcStudents); setLessons(les); setClasses(cl);
@@ -499,7 +499,7 @@ function HomePage({user,students,lessons,classLessons,classes,teachers,setPage,i
       <div style={S.card}>
         <h2 style={S.sectionTitle}>📋 Lezioni di oggi</h2>
         {todayIndiv.length===0&&todayClass.length===0?<div style={S.emptySmall}>Nessuna lezione programmata</div>:<>
-          {todayIndiv.map(l=>{const st=students.find(s=>s.id===l.student_id);const idx=lessons.filter(x=>x.student_id===l.student_id).sort((a,b)=>a.date.localeCompare(b.date)).findIndex(x=>x.id===l.id)+1;return(<div key={l.id} style={S.todayItem}><span style={S.timeBadge}>{l.time}</span><div style={{flex:1}}><div style={{fontWeight:600,fontSize:13}}>{st?.name||"—"}</div><div style={{fontSize:11,color:"#6b7280"}}>{l.topic} · {l.duration}min</div></div><ModeBadge mode={l.mode}/><LessonCounter current={idx} total={st?.package_total||0}/></div>);})}
+          {todayIndiv.map(l=>{const st=students.find(s=>s.id===l.student_id);const all=lessons.filter(x=>x.student_id===l.student_id).sort((a,b)=>a.date.localeCompare(b.date));const pos=all.findIndex(x=>x.id===l.id)+1;const idx=(st?.pkg_offset||0)+pos;return(<div key={l.id} style={S.todayItem}><span style={S.timeBadge}>{l.time}</span><div style={{flex:1}}><div style={{fontWeight:600,fontSize:13}}>{st?.name||"—"}</div><div style={{fontSize:11,color:"#6b7280"}}>{l.topic} · {l.duration}min</div></div><ModeBadge mode={l.mode}/><LessonCounter current={idx} total={st?.package_total||0}/></div>);})}
           {todayClass.map(l=>{const cls=classes.find(c=>c.id===l.class_id);const idx=classLessons.filter(x=>x.class_id===l.class_id).sort((a,b)=>a.date.localeCompare(b.date)).findIndex(x=>x.id===l.id)+1;return(<div key={l.id} style={{...S.todayItem,borderLeft:"3px solid #f59e0b"}}><span style={S.timeBadge}>{l.time}</span><div style={{flex:1}}><div style={{fontWeight:600,fontSize:13}}>{cls?.name||"—"} 👥</div><div style={{fontSize:11,color:"#6b7280"}}>{l.topic} · {l.duration}min</div></div><ModeBadge mode={l.mode}/><LessonCounter current={idx} total={cls?.package_total||0}/></div>);})}
         </>}
       </div>
@@ -513,7 +513,7 @@ function HomePage({user,students,lessons,classLessons,classes,teachers,setPage,i
     </div>
     <div style={S.section}><h2 style={S.sectionTitle}>Prossime lezioni</h2>
       <div style={S.tableWrap}><table style={S.table}><thead><tr><th style={S.th}>N°</th><th style={S.th}>Data</th><th style={S.th}>Ora</th><th style={S.th}>Studente</th><th style={S.th}>Argomento</th><th style={S.th}>Modalità</th><th style={S.th}>Presenza</th></tr></thead>
-        <tbody>{[...myL].filter(l=>l.date>=todayStr).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,5).map(l=>{const st=students.find(s=>s.id===l.student_id);const idx=lessons.filter(x=>x.student_id===l.student_id).sort((a,b)=>a.date.localeCompare(b.date)).findIndex(x=>x.id===l.id)+1;return(<tr key={l.id} style={S.tr}><td style={S.td}><LessonCounter current={idx} total={st?.package_total||0}/></td><td style={S.td}>{fmtDate(l.date)}</td><td style={S.td}><span style={S.timeBadge}>{l.time}</span></td><td style={S.td}><strong>{st?.name||"—"}</strong></td><td style={{...S.td,maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.topic}</td><td style={S.td}><ModeBadge mode={l.mode}/></td><td style={S.td}><Pill ok={l.present}/></td></tr>);})}</tbody>
+        <tbody>{[...myL].filter(l=>l.date>=todayStr).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,5).map(l=>{const st=students.find(s=>s.id===l.student_id);const all=lessons.filter(x=>x.student_id===l.student_id).sort((a,b)=>a.date.localeCompare(b.date));const pos=all.findIndex(x=>x.id===l.id)+1;const idx=(st?.pkg_offset||0)+pos;return(<tr key={l.id} style={S.tr}><td style={S.td}><LessonCounter current={idx} total={st?.package_total||0}/></td><td style={S.td}>{fmtDate(l.date)}</td><td style={S.td}><span style={S.timeBadge}>{l.time}</span></td><td style={S.td}><strong>{st?.name||"—"}</strong></td><td style={{...S.td,maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.topic}</td><td style={S.td}><ModeBadge mode={l.mode}/></td><td style={S.td}><Pill ok={l.present}/></td></tr>);})}</tbody>
       </table></div>
     </div>
     {dashDetail&&<StudentDetailModal student={dashDetail} lessons={lessons.filter(l=>l.student_id===dashDetail.id)} onClose={()=>setDashDetail(null)}/>}
