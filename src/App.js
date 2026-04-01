@@ -262,8 +262,16 @@ export default function App() {
     setReviewHomework(p=>{const n=p.filter(x=>x!==id);try{localStorage.setItem("review_homework",JSON.stringify(n));}catch{}return n;});
   };
   const updateLesson = async l => {
+    const prev=lessons.find(x=>x.id===l.id);
     setLessons(p=>p.map(x=>x.id===l.id?l:x));
-    try { await db.upsertLesson(l); showToast("Lezione aggiornata"); }
+    try {
+      await db.upsertLesson(l);
+      showToast("Lezione aggiornata");
+      // Se i compiti sono cambiati, rimuovi dalla lista "visti" così appare come nuova notifica
+      if(l.homework&&l.homework.trim()!==""&&prev?.homework!==l.homework){
+        markHomeworkUnseen(l.id);
+      }
+    }
     catch(e) { showToast("Errore salvataggio","err"); }
   };
   const deleteLesson = async (id,sid) => {
@@ -701,7 +709,8 @@ function ModeFields({form,set}) {
 function LessonsPage({user,students,lessons,teachers,isAdmin,onAdd,onAddRecurring,onUpdate,onDelete}) {
   const [modal,setModal]=useState(null);const [fS,setFS]=useState("");const [fM,setFM]=useState("");const [fY,setFY]=useState("");const [fD,setFD]=useState("");const [fT,setFT]=useState("");const [confirm,setConfirm]=useState(null);const [openDays,setOpenDays]=useState({});const toggleDay=d=>setOpenDays(p=>({...p,[d]:!p[d]}));const isDayOpen=d=>openDays[d]!==false;const [detailSt,setDetailSt]=useState(null);const [viewMode,setViewMode]=useState("day");
   const myL=isAdmin?lessons:lessons.filter(l=>l.teacher_id===user.id);
-  const filtered=myL.filter(l=>l.date>=today()&&(!fS||l.student_id===fS)&&(!fT||l.teacher_id===fT)&&(!fY||l.date.startsWith(fY))&&(!fM||l.date.slice(0,7)===fM)&&(!fD||l.date===fD));
+  const [showPast,setShowPast]=useState(false);
+  const filtered=myL.filter(l=>(showPast||l.date>=today())&&(!fS||l.student_id===fS)&&(!fT||l.teacher_id===fT)&&(!fY||l.date.startsWith(fY))&&(!fM||l.date.slice(0,7)===fM)&&(!fD||l.date===fD));
   const sorted=useMemo(()=>[...filtered].sort((a,b)=>a.date.localeCompare(b.date)||(a.time||"").localeCompare(b.time||"")),[filtered]);
   const years=[...new Set(myL.map(l=>l.date.slice(0,4)))].sort().reverse();
   const months=[...new Set(myL.map(l=>l.date.slice(0,7)))].sort().reverse();
@@ -712,7 +721,8 @@ function LessonsPage({user,students,lessons,teachers,isAdmin,onAdd,onAddRecurrin
     <div style={S.pageHeader}><div><h1 style={S.pageTitle}>Lezioni Individuali</h1><p style={S.pageSub}>{myL.length} lezioni registrate</p></div>
       <div style={{display:"flex",gap:8,alignItems:"center"}}>
         <div style={{display:"flex",gap:4,background:"#f1f5f9",borderRadius:8,padding:3}}>{[["day","Per giorno"],["table","Tabella"]].map(([v,l])=><button key={v} onClick={()=>setViewMode(v)} style={{padding:"5px 12px",borderRadius:6,border:"none",cursor:"pointer",fontWeight:600,fontSize:12,background:viewMode===v?"white":"transparent",color:viewMode===v?"#374151":"#9ca3af",boxShadow:viewMode===v?"0 1px 3px rgba(0,0,0,0.1)":"none"}}>{l}</button>)}</div>
-        {isAdmin&&<button style={{...S.btnPrimary,width:"auto"}} onClick={()=>setModal("add")}>+ Nuova Lezione</button>}
+        {isAdmin&&<button style={{...S.btnSecondary,width:"auto",fontSize:13}} onClick={()=>setShowPast(p=>!p)}>{showPast?"Nascondi passate":"Mostra passate"}</button>
+        <button style={{...S.btnPrimary,width:"auto"}} onClick={()=>setModal("add")}>+ Nuova Lezione</button>}
       </div>
     </div>
     <div style={{display:"flex",gap:10,marginBottom:20,flexWrap:"wrap",alignItems:"center"}}>
@@ -997,7 +1007,9 @@ function CalendarPage({user,students,lessons,classLessons,classes,teachers,isAdm
       const timeMin=new Date(year,month,1).toISOString();
       const timeMax=new Date(year,month+4,0).toISOString();
       setGcMsg("Importazione lezioni...");
-      let imported=0,skipped=0,errors=[];
+      let imported=0,updated=0,deleted=0,skipped=0,errors=[];
+      // Raccoglie tutti gli eventi Google per il periodo
+      const gcEvents=[];
       for(const cal of calendars){
         const calName=cal.summary||"";
         const matchedTeacher=(allTeachers||teachers).find(t=>t.role==="teacher"&&(
@@ -1006,23 +1018,68 @@ function CalendarPage({user,students,lessons,classLessons,classes,teachers,isAdm
         ));
         if(!matchedTeacher) continue;
         const eventsResp=await window.gapi.client.calendar.events.list({
-          calendarId:cal.id,timeMin,timeMax,singleEvents:true,orderBy:"startTime",maxResults:500
+          calendarId:cal.id,timeMin,timeMax,singleEvents:true,orderBy:"startTime",maxResults:500,
+          showDeleted:true // include eventi cancellati
         });
         for(const event of eventsResp.result.items||[]){
-          const parsed=parseGoogleEvent(event);
-          if(!parsed) continue;
-          const student=findStudent(parsed.summary);
-          if(!student){errors.push('"'+parsed.summary+'" ('+matchedTeacher.name+')');skipped++;continue;}
+          gcEvents.push({event,teacher:matchedTeacher});
+        }
+      }
+      // Lezioni nel DB per il periodo
+      const periodStart=new Date(year,month,1).toISOString().split("T")[0];
+      const periodEnd=new Date(year,month+4,0).toISOString().split("T")[0];
+      const periodLessons=lessons.filter(l=>l.date>=periodStart&&l.date<=periodEnd&&l.gc_event_id);
+
+      // Processa ogni evento Google
+      for(const {event,teacher:matchedTeacher} of gcEvents){
+        const isCancelled=event.status==="cancelled";
+        const gcId=event.id;
+        const existingLesson=periodLessons.find(l=>l.gc_event_id===gcId);
+
+        if(isCancelled){
+          // Evento cancellato su Google → elimina dall'app
+          if(existingLesson){
+            try{await db.deleteLesson(existingLesson.id);deleted++;} catch(e){}
+          }
+          continue;
+        }
+
+        const parsed=parseGoogleEvent(event);
+        if(!parsed) continue;
+        const student=findStudent(parsed.summary);
+        if(!student){
+          if(!existingLesson)errors.push('"'+parsed.summary+'" ('+matchedTeacher.name+')');
+          skipped++;continue;
+        }
+
+        if(existingLesson){
+          // Evento esistente — aggiorna se data/ora è cambiata
+          if(existingLesson.date!==parsed.startDate||existingLesson.time!==parsed.startTime||existingLesson.duration!==parsed.duration){
+            try{
+              await db.upsertLesson({...existingLesson,date:parsed.startDate,time:parsed.startTime,duration:parsed.duration});
+              updated++;
+            }catch(e){skipped++;}
+          } else {skipped++;}
+        } else {
+          // Nuovo evento — controlla duplicati per data/ora/studente
           const dup=lessons.find(l=>l.student_id===student.id&&l.date===parsed.startDate&&l.time===parsed.startTime);
-          if(dup){skipped++;continue;}
+          if(dup){
+            // Associa gc_event_id al duplicato esistente per tracciarlo in futuro
+            try{await db.upsertLesson({...dup,gc_event_id:gcId});}catch(e){}
+            skipped++;continue;
+          }
           try{
-            await onImportLesson({student_id:student.id,teacher_id:matchedTeacher.id,date:parsed.startDate,time:parsed.startTime,duration:parsed.duration,topic:parsed.summary,homework:"",present:true,mode:parsed.mode,zoom_account:""});
+            await onImportLesson({student_id:student.id,teacher_id:matchedTeacher.id,date:parsed.startDate,time:parsed.startTime,duration:parsed.duration,topic:parsed.summary,homework:"",present:true,mode:parsed.mode,zoom_account:"",gc_event_id:gcId});
             imported++;
           }catch(e){skipped++;}
         }
       }
-      setGcStatus("done");setGcCount({imported,skipped,errors});
-      setGcMsg(imported>0?("✅ Importate "+imported+" nuove lezioni"):"✅ Nessuna nuova lezione da importare");
+      setGcStatus("done");setGcCount({imported,updated,deleted,skipped,errors});
+      const parts=[];
+      if(imported>0)parts.push(`${imported} nuove`);
+      if(updated>0)parts.push(`${updated} aggiornate`);
+      if(deleted>0)parts.push(`${deleted} eliminate`);
+      setGcMsg(parts.length>0?`✅ ${parts.join(", ")} lezioni`:"✅ Calendario aggiornato, nessuna modifica");
     }catch(e){setGcStatus("error");setGcMsg("Errore: "+(e.message||"problema con Google Calendar"));}
   };
 
@@ -1042,7 +1099,7 @@ function CalendarPage({user,students,lessons,classLessons,classes,teachers,isAdm
     {gcStatus!=="idle"&&(
       <div style={{background:gcStatus==="error"?"#fee2e2":gcStatus==="done"?"#f0fdf4":"#eff6ff",border:"1px solid "+(gcStatus==="error"?"#fca5a5":gcStatus==="done"?"#86efac":"#93c5fd"),borderRadius:12,padding:"12px 18px",marginBottom:16,fontSize:13}}>
         <div style={{fontWeight:600,color:gcStatus==="error"?"#dc2626":gcStatus==="done"?"#166534":"#1d4ed8",marginBottom:gcCount?.errors?.length>0?6:0}}>{gcMessage}</div>
-        {gcCount?.errors?.length>0&&(<div>
+        {(gcCount?.updated>0||gcCount?.deleted>0)&&<div style={{fontSize:12,color:"#1d4ed8",marginBottom:4}}>{gcCount.updated>0&&<span>🔄 {gcCount.updated} aggiornate · </span>}{gcCount.deleted>0&&<span>🗑️ {gcCount.deleted} eliminate</span>}</div>}{gcCount?.errors?.length>0&&(<div>
           <div style={{fontSize:12,color:"#92400e",fontWeight:600,marginBottom:4}}>Lezioni non abbinate ({gcCount.errors.length}):</div>
           {gcCount.errors.slice(0,5).map((e,i)=><div key={i} style={{fontSize:11,color:"#b45309"}}>• {e}</div>)}
           {gcCount.errors.length>5&&<div style={{fontSize:11,color:"#9ca3af"}}>...e altri {gcCount.errors.length-5}</div>}
