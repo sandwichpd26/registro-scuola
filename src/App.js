@@ -591,7 +591,7 @@ function StudentsPage({user,students,classes,teachers,lessons,classLessons,isAdm
     <div style={{display:"flex",gap:8,marginBottom:16}}>{[["students","👤 Studenti Individuali"],["classes","👥 Classi"]].map(([id,label])=>(<button key={id} onClick={()=>setTab(id)} style={{padding:"8px 20px",borderRadius:10,border:"none",cursor:"pointer",fontWeight:600,fontSize:14,background:tab===id?"#6366f1":"#f1f5f9",color:tab===id?"white":"#374151"}}>{label}</button>))}</div>
     <input style={{...S.input,marginBottom:20,maxWidth:320}} placeholder="🔍  Cerca…" value={search} onChange={e=>setSearch(e.target.value)}/>
     {tab==="students"&&(fS.length===0?<Empty text="Nessuno studente trovato"/>:(<div style={S.cardGrid}>{fS.map(student=>{
-      const sl=lessons.filter(l=>l.student_id===student.id);const lastL=[...sl].sort((a,b)=>b.date.localeCompare(a.date))[0];const teacher=teachers.find(t=>t.id===student.teacher_id);const rem=pkgRemaining(student);
+      const lastL=[...sl].sort((a,b)=>b.date.localeCompare(a.date))[0];const teacher=teachers.find(t=>t.id===student.teacher_id);const rem=pkgRemaining(student);
       return(<div key={student.id} style={{...S.studentCard,borderTop:`3px solid ${pkgColor(student)}`}}>
         <div style={S.cardTop}><div style={S.studentAvatar}>{student.name.split(" ").map(n=>n[0]).join("").slice(0,2)}</div><div style={{flex:1}}><div style={S.studentName}>{student.name}</div><div style={S.studentMeta}>{teacher?.name||"—"}</div></div><LevelBadge level={student.level}/></div>
         <div style={{marginBottom:10,fontSize:12,color:"#6b7280",display:"flex",gap:12,flexWrap:"wrap"}}>{student.phone&&<span>📞 {student.phone}</span>}{student.email&&<span>✉️ {student.email}</span>}</div>
@@ -1008,9 +1008,6 @@ function CalendarPage({user,students,lessons,classLessons,classes,teachers,isAdm
       const timeMax=new Date(year,month+4,0).toISOString();
       setGcMsg("Importazione lezioni...");
       let imported=0,updated=0,deleted=0,skipped=0,errors=[];
-      const periodStart=new Date(year,month,1).toISOString().split("T")[0];
-      const periodEnd=new Date(year,month+4,0).toISOString().split("T")[0];
-
       // Raccoglie tutti gli eventi Google per il periodo (inclusi cancellati)
       const gcEvents=[];
       for(const cal of calendars){
