@@ -1008,7 +1008,10 @@ function CalendarPage({user,students,lessons,classLessons,classes,teachers,isAdm
       const timeMax=new Date(year,month+4,0).toISOString();
       setGcMsg("Importazione lezioni...");
       let imported=0,updated=0,deleted=0,skipped=0,errors=[];
-      // Raccoglie tutti gli eventi Google per il periodo
+      const periodStart=new Date(year,month,1).toISOString().split("T")[0];
+      const periodEnd=new Date(year,month+4,0).toISOString().split("T")[0];
+
+      // Raccoglie tutti gli eventi Google per il periodo (inclusi cancellati)
       const gcEvents=[];
       for(const cal of calendars){
         const calName=cal.summary||"";
@@ -1018,28 +1021,39 @@ function CalendarPage({user,students,lessons,classLessons,classes,teachers,isAdm
         ));
         if(!matchedTeacher) continue;
         const eventsResp=await window.gapi.client.calendar.events.list({
-          calendarId:cal.id,timeMin,timeMax,singleEvents:true,orderBy:"startTime",maxResults:500,
-          showDeleted:true // include eventi cancellati
+          calendarId:cal.id,timeMin,timeMax,singleEvents:true,orderBy:"startTime",maxResults:500,showDeleted:true
         });
         for(const event of eventsResp.result.items||[]){
           gcEvents.push({event,teacher:matchedTeacher});
         }
       }
-      // Lezioni nel DB per il periodo
-      const periodStart=new Date(year,month,1).toISOString().split("T")[0];
-      const periodEnd=new Date(year,month+4,0).toISOString().split("T")[0];
-      const periodLessons=lessons.filter(l=>l.date>=periodStart&&l.date<=periodEnd&&l.gc_event_id);
+
+      // Helper: trova lezione nel DB per gc_event_id o per studente+data±7gg
+      const allPeriodLessons=[...lessons];
+      const findExisting=(gcId,studentId,dateStr)=>{
+        // Prima cerca per gc_event_id (lezioni già sincronizzate)
+        const byId=allPeriodLessons.find(l=>l.gc_event_id===gcId);
+        if(byId)return byId;
+        // Poi cerca per studente + data entro ±7 giorni
+        const d=new Date(dateStr);
+        return allPeriodLessons.find(l=>{
+          if(l.student_id!==studentId)return false;
+          const ld=new Date(l.date);
+          const diff=Math.abs((d-ld)/(1000*60*60*24));
+          return diff<=7;
+        });
+      };
 
       // Processa ogni evento Google
       for(const {event,teacher:matchedTeacher} of gcEvents){
         const isCancelled=event.status==="cancelled";
         const gcId=event.id;
-        const existingLesson=periodLessons.find(l=>l.gc_event_id===gcId);
 
         if(isCancelled){
-          // Evento cancellato su Google → elimina dall'app
-          if(existingLesson){
-            try{await db.deleteLesson(existingLesson.id);deleted++;} catch(e){}
+          // Evento cancellato → cerca nel DB e elimina
+          const existing=allPeriodLessons.find(l=>l.gc_event_id===gcId);
+          if(existing){
+            try{await db.deleteLesson(existing.id);deleted++;}catch(e){}
           }
           continue;
         }
@@ -1047,27 +1061,21 @@ function CalendarPage({user,students,lessons,classLessons,classes,teachers,isAdm
         const parsed=parseGoogleEvent(event);
         if(!parsed) continue;
         const student=findStudent(parsed.summary);
-        if(!student){
-          if(!existingLesson)errors.push('"'+parsed.summary+'" ('+matchedTeacher.name+')');
-          skipped++;continue;
-        }
+        if(!student){errors.push('"'+parsed.summary+'" ('+matchedTeacher.name+')');skipped++;continue;}
 
-        if(existingLesson){
-          // Evento esistente — aggiorna se data/ora è cambiata
-          if(existingLesson.date!==parsed.startDate||existingLesson.time!==parsed.startTime||existingLesson.duration!==parsed.duration){
+        const existing=findExisting(gcId,student.id,parsed.startDate);
+
+        if(existing){
+          // Lezione trovata — aggiorna gc_event_id e data/ora se cambiate
+          const changed=existing.date!==parsed.startDate||existing.time!==parsed.startTime||existing.duration!==parsed.duration||existing.gc_event_id!==gcId;
+          if(changed){
             try{
-              await db.upsertLesson({...existingLesson,date:parsed.startDate,time:parsed.startTime,duration:parsed.duration});
+              await db.upsertLesson({...existing,date:parsed.startDate,time:parsed.startTime,duration:parsed.duration,gc_event_id:gcId});
               updated++;
             }catch(e){skipped++;}
           } else {skipped++;}
         } else {
-          // Nuovo evento — controlla duplicati per data/ora/studente
-          const dup=lessons.find(l=>l.student_id===student.id&&l.date===parsed.startDate&&l.time===parsed.startTime);
-          if(dup){
-            // Associa gc_event_id al duplicato esistente per tracciarlo in futuro
-            try{await db.upsertLesson({...dup,gc_event_id:gcId});}catch(e){}
-            skipped++;continue;
-          }
+          // Nuova lezione
           try{
             await onImportLesson({student_id:student.id,teacher_id:matchedTeacher.id,date:parsed.startDate,time:parsed.startTime,duration:parsed.duration,topic:parsed.summary,homework:"",present:true,mode:parsed.mode,zoom_account:"",gc_event_id:gcId});
             imported++;
@@ -1192,7 +1200,7 @@ function ReportsPage({user,students,classes,lessons,classLessons,teachers,isAdmi
   },[teachers,lessons,classLessons]);
   return (<div style={S.page}>
     <div style={S.pageHeader}><div><h1 style={S.pageTitle}>📊 Report & Statistiche</h1><p style={S.pageSub}>Monitoraggio pacchetti, ore e lezioni</p></div></div>
-    <div style={S.statsGrid}>{[{label:"Studenti attivi",value:students.filter(s=>s.active).length,icon:"👤",color:"#6366f1"},{label:"Pacchetti in scadenza",value:allObjs.filter(x=>pkgRemaining(x)<=3&&pkgRemaining(x)>0).length,icon:"⚠️",color:"#f59e0b"},{label:"Pacchetti esauriti",value:allObjs.filter(x=>pkgRemaining(x)<=0&&x.package_total>0).length,icon:"🔴",color:"#ef4444"},{label:"Lezioni totali",value:lessons.length+classLessons.length,icon:"📚",color:"#10b981"}].map((s,i)=>(<div key={i} style={S.statCard}><div style={{...S.statIcon,background:s.color+"20",color:s.color}}>{s.icon}</div><div style={S.statValue}>{s.value}</div><div style={S.statLabel}>{s.label}</div></div>))}</div>
+    <div style={S.statsGrid}>{[{label:"Studenti attivi",value:students.filter(s=>s.active).length,icon:"👤",color:"#6366f1"},{label:"Pacchetti in scadenza",value:allObjs.filter(x=>pkgRemaining(x)<=3&&pkgRemaining(x)>0).length,icon:"⚠️",color:"#f59e0b"},{label:"Pacchetti esauriti",value:allObjs.filter(x=>pkgRemaining(x)<=0&&x.package_total>0).length,icon:"🔴",color:"#ef4444"}].map((s,i)=>(<div key={i} style={S.statCard}><div style={{...S.statIcon,background:s.color+"20",color:s.color}}>{s.icon}</div><div style={S.statValue}>{s.value}</div><div style={S.statLabel}>{s.label}</div></div>))}</div>
     <div style={{...S.card,marginBottom:24}}>
       <h2 style={S.sectionTitle}>🕐 Ore di lezione questo mese — {new Date().toLocaleDateString("it-IT",{month:"long",year:"numeric"})}</h2>
       <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
@@ -1288,7 +1296,7 @@ function ArchivePage({students,teachers,lessons,onRestore,onTrash}) {
       return(<div key={student.id} style={{...S.studentCard,borderLeft:"4px solid #8b5cf6"}}>
         <div style={S.cardTop}><div style={{...S.studentAvatar,background:"#8b5cf620",color:"#8b5cf6"}}>{student.name.split(" ").map(n=>n[0]).join("").slice(0,2)}</div><div style={{flex:1}}><div style={S.studentName}>{student.name}</div><div style={S.studentMeta}>Ultimo ins: {teacher?.name||"—"}</div></div><LevelBadge level={student.level}/></div>
         <div style={{marginBottom:10,fontSize:12,color:"#6b7280",display:"flex",gap:12,flexWrap:"wrap"}}>{student.phone&&<span>📞 {student.phone}</span>}{student.email&&<span>✉️ {student.email}</span>}</div>
-        <div style={S.cardStats}><div style={S.miniStat}><span style={S.miniStatVal}>{sl.length}</span><span style={S.miniStatLbl}>lezioni totali</span></div><div style={S.miniStat}><span style={S.miniStatVal}>{student.package_used}/{student.package_total}</span><span style={S.miniStatLbl}>usate/tot</span></div></div>
+        <div style={S.cardStats}><div style={S.miniStat}><span style={S.miniStatVal}>{student.package_used}/{student.package_total}</span><span style={S.miniStatLbl}>usate/tot</span></div></div>
         {student.notes&&<div style={S.cardNotes}>📝 {student.notes}</div>}
         <div style={S.cardActions}><button style={S.btnSm} onClick={()=>setSel(student)}>Scheda</button><button style={{...S.btnSm,background:"#10b98110",color:"#10b981",border:"1px solid #10b98130"}} onClick={()=>setRM(student)}>♻️ Ripristina</button><button style={{...S.btnSm,background:"#fee2e220",color:"#dc2626",border:"1px solid #fca5a5"}} onClick={()=>setConfirmTrash(student.id)}>🗑️ Cestino</button></div>
       </div>);
