@@ -1289,7 +1289,7 @@ function ArchivePage({students,teachers,lessons,onRestore,onTrash}) {
       {archSearch&&<button style={{...S.btnSecondary,padding:"8px 14px",fontSize:12}} onClick={()=>setArchSearch("")}>✕ Rimuovi</button>}
     </div>
     {students.length===0?<Empty text="L'archivio è vuoto"/>:filteredArch.length===0?<Empty text="Nessuno studente trovato"/>:(<div style={S.cardGrid}>{filteredArch.map(student=>{
-      const sl=lessons.filter(l=>l.student_id===student.id);const teacher=teachers.find(t=>t.id===student.teacher_id);
+      const teacher=teachers.find(t=>t.id===student.teacher_id);
       return(<div key={student.id} style={{...S.studentCard,borderLeft:"4px solid #8b5cf6"}}>
         <div style={S.cardTop}><div style={{...S.studentAvatar,background:"#8b5cf620",color:"#8b5cf6"}}>{student.name.split(" ").map(n=>n[0]).join("").slice(0,2)}</div><div style={{flex:1}}><div style={S.studentName}>{student.name}</div><div style={S.studentMeta}>Ultimo ins: {teacher?.name||"—"}</div></div><LevelBadge level={student.level}/></div>
         <div style={{marginBottom:10,fontSize:12,color:"#6b7280",display:"flex",gap:12,flexWrap:"wrap"}}>{student.phone&&<span>📞 {student.phone}</span>}{student.email&&<span>✉️ {student.email}</span>}</div>
