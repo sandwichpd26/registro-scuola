@@ -533,11 +533,11 @@ function HomePage({user,students,lessons,classLessons,classes,teachers,setPage,i
         </>}
       </div>
     </div>
-    <div style={S.section}><h2 style={S.sectionTitle}>Prossime lezioni</h2>
+    {isAdmin&&<div style={S.section}><h2 style={S.sectionTitle}>Prossime lezioni</h2>
       <div style={S.tableWrap}><table style={S.table}><thead><tr><th style={S.th}>N°</th><th style={S.th}>Data</th><th style={S.th}>Ora</th><th style={S.th}>Studente</th><th style={S.th}>Argomento</th><th style={S.th}>Modalità</th><th style={S.th}>Presenza</th></tr></thead>
         <tbody>{[...myL].filter(l=>l.date>=todayStr).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,5).map(l=>{const st=students.find(s=>s.id===l.student_id);const all=lessons.filter(x=>x.student_id===l.student_id).sort((a,b)=>a.date.localeCompare(b.date));const pos=all.findIndex(x=>x.id===l.id)+1;const idx=(st?.pkg_offset||0)+pos;return(<tr key={l.id} style={S.tr}><td style={S.td}><LessonCounter current={idx} total={st?.package_total||0}/></td><td style={S.td}>{fmtDate(l.date)}</td><td style={S.td}><span style={S.timeBadge}>{l.time}</span></td><td style={S.td}><strong>{st?.name||"—"}</strong></td><td style={{...S.td,maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.topic}</td><td style={S.td}><ModeBadge mode={l.mode}/></td><td style={S.td}><Pill ok={l.present}/></td></tr>);})}</tbody>
       </table></div>
-    </div>
+    </div>}
     {dashDetail&&<StudentDetailModal student={dashDetail} lessons={lessons.filter(l=>l.student_id===dashDetail.id)} onClose={()=>setDashDetail(null)}/>}
     {hwPanel&&isAdmin&&<HomeworkPanel lessons={unseenHw} seenLessons={seenHw} students={students} teachers={teachers} onMarkReview={markReview} onMarkSeen={markSeen} onClose={()=>setHwPanel(false)}/>}
   </div>);
@@ -591,7 +591,7 @@ function StudentsPage({user,students,classes,teachers,lessons,classLessons,isAdm
     <div style={{display:"flex",gap:8,marginBottom:16}}>{[["students","👤 Studenti Individuali"],["classes","👥 Classi"]].map(([id,label])=>(<button key={id} onClick={()=>setTab(id)} style={{padding:"8px 20px",borderRadius:10,border:"none",cursor:"pointer",fontWeight:600,fontSize:14,background:tab===id?"#6366f1":"#f1f5f9",color:tab===id?"white":"#374151"}}>{label}</button>))}</div>
     <input style={{...S.input,marginBottom:20,maxWidth:320}} placeholder="🔍  Cerca…" value={search} onChange={e=>setSearch(e.target.value)}/>
     {tab==="students"&&(fS.length===0?<Empty text="Nessuno studente trovato"/>:(<div style={S.cardGrid}>{fS.map(student=>{
-      const lastL=[...sl].sort((a,b)=>b.date.localeCompare(a.date))[0];const teacher=teachers.find(t=>t.id===student.teacher_id);const rem=pkgRemaining(student);
+      const sl=lessons.filter(l=>l.student_id===student.id);const lastL=[...sl].sort((a,b)=>b.date.localeCompare(a.date))[0];const teacher=teachers.find(t=>t.id===student.teacher_id);const rem=pkgRemaining(student);
       return(<div key={student.id} style={{...S.studentCard,borderTop:`3px solid ${pkgColor(student)}`}}>
         <div style={S.cardTop}><div style={S.studentAvatar}>{student.name.split(" ").map(n=>n[0]).join("").slice(0,2)}</div><div style={{flex:1}}><div style={S.studentName}>{student.name}</div><div style={S.studentMeta}>{teacher?.name||"—"}</div></div><LevelBadge level={student.level}/></div>
         <div style={{marginBottom:10,fontSize:12,color:"#6b7280",display:"flex",gap:12,flexWrap:"wrap"}}>{student.phone&&<span>📞 {student.phone}</span>}{student.email&&<span>✉️ {student.email}</span>}</div>
