@@ -960,30 +960,42 @@ function CalendarPage({user,students,lessons,classLessons,classes,teachers,isAdm
     const mode=title.includes("onl.")||title.includes("online")||title.includes("zoom")?"online":"presenza";
     return {startDate,startTime,duration,summary:event.summary||"",mode};
   };
+  // Restituisce {student, ambiguous} — ambiguous=true se più studenti hanno lo stesso nome
   const findStudent = (eventSummary) => {
     const active=(allStudents||students).filter(s=>s.active&&!s.deleted);
     const titleLower=eventSummary.toLowerCase();
-    // 1. Cerca corrispondenza con nome completo
-    const full=active.find(s=>titleLower.includes(s.name.toLowerCase()));
-    if(full)return full;
-    // 2. Cerca corrispondenza con cognome (parola più lunga del nome)
-    const bySurname=active.find(s=>{
+
+    // 1. Nome completo esatto (priorità massima)
+    const byFull=active.filter(s=>titleLower.includes(s.name.toLowerCase()));
+    if(byFull.length===1)return{student:byFull[0],ambiguous:false};
+    if(byFull.length>1)return{student:byFull[0],ambiguous:true};
+
+    // 2. Cognome (es. "Morlini" → Alberto Morlini)
+    const bySurname=active.filter(s=>{
       const parts=s.name.toLowerCase().split(" ");
       const surname=parts[parts.length-1];
       return surname.length>2&&titleLower.includes(surname);
     });
-    if(bySurname)return bySurname;
-    // 3. Cerca nome + iniziale cognome (es. "andrea s" per Andrea Scuttari)
-    const byInitial=active.find(s=>{
+    if(bySurname.length===1)return{student:bySurname[0],ambiguous:false};
+    if(bySurname.length>1)return{student:bySurname[0],ambiguous:true};
+
+    // 3. Nome + iniziale cognome (es. "Andrea s." → Andrea Scuttari)
+    const byInitial=active.filter(s=>{
       const parts=s.name.toLowerCase().split(" ");
       if(parts.length<2)return false;
       const firstName=parts[0];
       const initial=parts[parts.length-1][0];
       return titleLower.includes(firstName)&&titleLower.includes(initial+".");
     });
-    if(byInitial)return byInitial;
-    // 4. Solo nome (ultimo tentativo)
-    return active.find(s=>s.name.toLowerCase().split(" ").filter(p=>p.length>2).some(p=>titleLower.includes(p)));
+    if(byInitial.length===1)return{student:byInitial[0],ambiguous:false};
+    if(byInitial.length>1)return{student:byInitial[0],ambiguous:true};
+
+    // 4. Solo nome — controlla se è ambiguo
+    const byName=active.filter(s=>s.name.toLowerCase().split(" ").filter(p=>p.length>2).some(p=>titleLower.includes(p)));
+    if(byName.length===1)return{student:byName[0],ambiguous:false};
+    if(byName.length>1)return{student:byName[0],ambiguous:true};
+
+    return{student:null,ambiguous:false};
   };
   const syncGoogleCalendar = async () => {
     setGcStatus("loading");setGcMsg("Caricamento librerie Google...");setGcCount(null);
@@ -1007,7 +1019,7 @@ function CalendarPage({user,students,lessons,classLessons,classes,teachers,isAdm
       const timeMin=new Date(year,month,1).toISOString();
       const timeMax=new Date(year,month+4,0).toISOString();
       setGcMsg("Importazione lezioni...");
-      let imported=0,updated=0,deleted=0,skipped=0,errors=[];
+      let imported=0,updated=0,deleted=0,skipped=0,errors=[],ambiguousEvents=[];
       // Raccoglie tutti gli eventi Google per il periodo (inclusi cancellati)
       const gcEvents=[];
       for(const cal of calendars){
@@ -1057,8 +1069,9 @@ function CalendarPage({user,students,lessons,classLessons,classes,teachers,isAdm
 
         const parsed=parseGoogleEvent(event);
         if(!parsed) continue;
-        const student=findStudent(parsed.summary);
+        const {student,ambiguous}=findStudent(parsed.summary);
         if(!student){errors.push('"'+parsed.summary+'" ('+matchedTeacher.name+')');skipped++;continue;}
+        if(ambiguous){ambiguousEvents.push('"'+parsed.summary+'" ('+matchedTeacher.name+') → abbinato a '+student.name);}
 
         const existing=findExisting(gcId,student.id,parsed.startDate);
 
@@ -1079,7 +1092,7 @@ function CalendarPage({user,students,lessons,classLessons,classes,teachers,isAdm
           }catch(e){skipped++;}
         }
       }
-      setGcStatus("done");setGcCount({imported,updated,deleted,skipped,errors});
+      setGcStatus("done");setGcCount({imported,updated,deleted,skipped,errors,ambiguousEvents});
       const parts=[];
       if(imported>0)parts.push(`${imported} nuove`);
       if(updated>0)parts.push(`${updated} aggiornate`);
@@ -1104,7 +1117,7 @@ function CalendarPage({user,students,lessons,classLessons,classes,teachers,isAdm
     {gcStatus!=="idle"&&(
       <div style={{background:gcStatus==="error"?"#fee2e2":gcStatus==="done"?"#f0fdf4":"#eff6ff",border:"1px solid "+(gcStatus==="error"?"#fca5a5":gcStatus==="done"?"#86efac":"#93c5fd"),borderRadius:12,padding:"12px 18px",marginBottom:16,fontSize:13}}>
         <div style={{fontWeight:600,color:gcStatus==="error"?"#dc2626":gcStatus==="done"?"#166534":"#1d4ed8",marginBottom:gcCount?.errors?.length>0?6:0}}>{gcMessage}</div>
-        {(gcCount?.updated>0||gcCount?.deleted>0)&&<div style={{fontSize:12,color:"#1d4ed8",marginBottom:4}}>{gcCount.updated>0&&<span>🔄 {gcCount.updated} aggiornate · </span>}{gcCount.deleted>0&&<span>🗑️ {gcCount.deleted} eliminate</span>}</div>}{gcCount?.errors?.length>0&&(<div>
+        {(gcCount?.updated>0||gcCount?.deleted>0)&&<div style={{fontSize:12,color:"#1d4ed8",marginBottom:4}}>{gcCount.updated>0&&<span>🔄 {gcCount.updated} aggiornate · </span>}{gcCount.deleted>0&&<span>🗑️ {gcCount.deleted} eliminate</span>}</div>}{gcCount?.ambiguousEvents?.length>0&&(<div style={{marginBottom:6}}><div style={{fontSize:12,color:"#92400e",fontWeight:600,marginBottom:4}}>⚠️ Abbinamenti ambigui ({gcCount.ambiguousEvents.length}) — aggiungi cognome o iniziale su Google Calendar:</div>{gcCount.ambiguousEvents.map((e,i)=><div key={i} style={{fontSize:11,color:"#b45309"}}>• {e}</div>)}</div>)}{gcCount?.errors?.length>0&&(<div>
           <div style={{fontSize:12,color:"#92400e",fontWeight:600,marginBottom:4}}>Lezioni non abbinate ({gcCount.errors.length}):</div>
           {gcCount.errors.slice(0,5).map((e,i)=><div key={i} style={{fontSize:11,color:"#b45309"}}>• {e}</div>)}
           {gcCount.errors.length>5&&<div style={{fontSize:11,color:"#9ca3af"}}>...e altri {gcCount.errors.length-5}</div>}
