@@ -709,8 +709,9 @@ function ModeFields({form,set}) {
 function LessonsPage({user,students,lessons,teachers,isAdmin,onAdd,onAddRecurring,onUpdate,onDelete}) {
   const [modal,setModal]=useState(null);const [fS,setFS]=useState("");const [fM,setFM]=useState("");const [fY,setFY]=useState("");const [fD,setFD]=useState("");const [fT,setFT]=useState("");const [confirm,setConfirm]=useState(null);const [openDays,setOpenDays]=useState({});const toggleDay=d=>setOpenDays(p=>({...p,[d]:!p[d]}));const isDayOpen=d=>openDays[d]!==false;const [detailSt,setDetailSt]=useState(null);const [viewMode,setViewMode]=useState("day");
   const myL=isAdmin?lessons:lessons.filter(l=>l.teacher_id===user.id);
-  const [showPast,setShowPast]=useState(false);
-  const filtered=myL.filter(l=>(showPast||l.date>=today())&&(!fS||l.student_id===fS)&&(!fT||l.teacher_id===fT)&&(!fY||l.date.startsWith(fY))&&(!fM||l.date.slice(0,7)===fM)&&(!fD||l.date===fD));
+  // Mostra lezioni passate solo se è attivo un filtro per anno, mese o giorno
+  const hasPastFilter=fY||fM||fD;
+  const filtered=myL.filter(l=>(hasPastFilter||l.date>=today())&&(!fS||l.student_id===fS)&&(!fT||l.teacher_id===fT)&&(!fY||l.date.startsWith(fY))&&(!fM||l.date.slice(0,7)===fM)&&(!fD||l.date===fD));
   const sorted=useMemo(()=>[...filtered].sort((a,b)=>a.date.localeCompare(b.date)||(a.time||"").localeCompare(b.time||"")),[filtered]);
   const years=[...new Set(myL.map(l=>l.date.slice(0,4)))].sort().reverse();
   const months=[...new Set(myL.map(l=>l.date.slice(0,7)))].sort().reverse();
@@ -721,8 +722,7 @@ function LessonsPage({user,students,lessons,teachers,isAdmin,onAdd,onAddRecurrin
     <div style={S.pageHeader}><div><h1 style={S.pageTitle}>Lezioni Individuali</h1><p style={S.pageSub}>{myL.length} lezioni registrate</p></div>
       <div style={{display:"flex",gap:8,alignItems:"center"}}>
         <div style={{display:"flex",gap:4,background:"#f1f5f9",borderRadius:8,padding:3}}>{[["day","Per giorno"],["table","Tabella"]].map(([v,l])=><button key={v} onClick={()=>setViewMode(v)} style={{padding:"5px 12px",borderRadius:6,border:"none",cursor:"pointer",fontWeight:600,fontSize:12,background:viewMode===v?"white":"transparent",color:viewMode===v?"#374151":"#9ca3af",boxShadow:viewMode===v?"0 1px 3px rgba(0,0,0,0.1)":"none"}}>{l}</button>)}</div>
-        {isAdmin&&<button style={{...S.btnSecondary,width:"auto",fontSize:13}} onClick={()=>setShowPast(p=>!p)}>{showPast?"Nascondi passate":"Mostra passate"}</button>
-        <button style={{...S.btnPrimary,width:"auto"}} onClick={()=>setModal("add")}>+ Nuova Lezione</button>}
+        <button style={{...S.btnPrimary,width:"auto"}} onClick={()=>setModal("add")}>+ Nuova Lezione</button>
       </div>
     </div>
     <div style={{display:"flex",gap:10,marginBottom:20,flexWrap:"wrap",alignItems:"center"}}>
